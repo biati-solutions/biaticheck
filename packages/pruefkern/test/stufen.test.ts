@@ -224,7 +224,7 @@ describe("Einfache Darstellung: Kurzfassung und eine Empfehlung", () => {
     const { s2 } = stufen(wendeAntwortAn(G001, "meta.zugangAm", "2025-11-28"));
     expect(s2.empfehlung).toEqual({
       titel: "Schicken Sie das vorbereitete Schreiben an Ihre Hausverwaltung",
-      text: "Darin fordern wir die Klärung von 4 Punkten, die Sie Geld kosten können. Senden Sie es bis spätestens 28.11.2026.",
+      text: "Darin fordern wir die Klärung von 5 Punkten, die Sie Geld kosten können. Senden Sie es bis spätestens 28.11.2026.",
       aktion: "schreiben",
     });
     const r05 = s2.auffaelligkeiten.find((p) => p.regelId === "R-05")!;
@@ -237,14 +237,14 @@ describe("Einfache Darstellung: Kurzfassung und eine Empfehlung", () => {
     ]);
   });
 
-  it("möglicherweise verspätet: erst Vorjahresabrechnung, Nachzahlung vorerst nicht zahlen", () => {
+  it("möglicherweise verspätet: erst Vorjahresabrechnung, Nachzahlung nur unter Vorbehalt zahlen", () => {
     const { s1, s2 } = stufen(wendeAntwortAn(G001, "meta.zugangAm", "2026-01-15"));
     expect(s1.fehlerpotenzial.sicher).toBe(0);
     const f02 = s2.auffaelligkeiten.find((p) => p.regelId === "F-02")!;
     expect(f02.status).toBe("pruefbedarf");
     expect(f02.kurz).toEqual({ titel: "Abrechnung möglicherweise zu spät", satz: `Dann müssten Sie ${euro(1214.88)} nicht zahlen. Das bestätigen wir mit Ihrer Vorjahresabrechnung.` });
     expect(s2.unterlagen.map((u) => u.titel)).toContain("Abrechnung des Vorjahres");
-    expect(s2.fahrplan.schritte.map((x) => x.titel)).toContain("Nachzahlung vorerst nicht bezahlen");
+    expect(s2.fahrplan.schritte.map((x) => x.titel)).toContain("Nachzahlung nur unter Vorbehalt zahlen");
     expect(s2.anschreiben.text).not.toContain("Abrechnungsfrist");
   });
 
@@ -281,9 +281,9 @@ describe("Einfache Darstellung: Kurzfassung und eine Empfehlung", () => {
 });
 
 describe("Fehlerquote und persönliches Anschreiben", () => {
-  it("G-001: 4 Prüfregeln auffällig (Prüfbedarf zählt nicht), Fehlerpotenzial mittel", () => {
+  it("G-001: 5 Prüfregeln auffällig (Prüfbedarf zählt nicht), Fehlerpotenzial mittel", () => {
     const { s1 } = stufen(wendeAntwortAn(G001, "meta.zugangAm", "2025-11-28"));
-    expect(s1.fehlerpotenzial).toMatchObject({ regelnAuffaellig: 4, regelnGesamt: ALLE_REGELN.length, quote: Math.round((4 / ALLE_REGELN.length) * 100), stufe: "mittel" });
+    expect(s1.fehlerpotenzial).toMatchObject({ regelnAuffaellig: 5, regelnGesamt: ALLE_REGELN.length, quote: Math.round((5 / ALLE_REGELN.length) * 100), stufe: "mittel" });
   });
 
   it("Stufen nach Quote, sicherer Fehler immer hoch", () => {
@@ -344,7 +344,10 @@ describe("Fahrplan: konkrete Ergebnisse", () => {
     const { s2 } = stufen(mitVertrag);
     expect(s2.fahrplan.mietvertragOffen).toBe(0);
     expect(s2.fahrplan.schritte.map((s) => s.titel)).not.toContain("Mietvertrag hochladen");
-    expect(s2.fahrplan.schritte.map((x) => x.titel)).toContainEqual(expect.stringMatching(/^Höchstens .* statt .* zahlen$/));
+    // Ein Einwand schiebt die Zahlung nicht auf: zahlen unter Vorbehalt, der korrigierte Betrag steht im Text
+    const zahlen = s2.fahrplan.schritte.find((x) => x.titel === "Nachzahlung unter Vorbehalt zahlen")!;
+    expect(zahlen.text).toMatch(/Richtig wären höchstens .* statt /);
+    expect(zahlen.bis).toBeUndefined(); // Zahlungsfrist (28.12.2025) ist am Prüftag schon abgelaufen
     expect(s2.fahrplan.zahlung!.hoechstens).toBeLessThan(1214.88);
   });
 

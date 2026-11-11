@@ -87,6 +87,12 @@ export interface Einstellungen {
   kostenProQmMonatSchwelle: number;
   /** Warmwasserkosten des Hauses pro m³, ab denen sie auffällig sind. */
   warmwasserProM3Schwelle: number;
+  /** Faktor über dem Durchschnitt des Betriebskostenspiegels, ab dem eine Kostenart auffällig ist (2 = doppelt so teuer). */
+  kennwertSchwelle: number;
+  /** Mindestbetrag über dem Durchschnitt in Euro im Abrechnungszeitraum, damit Kleinstbeträge nicht auffallen. */
+  kennwertMindestEuro: number;
+  /** Ab welcher Abweichung der Flächen gegenüber dem Vorjahr eine Erklärung nötig ist (0.01 = 1 %). */
+  flaechenAbweichungSchwelle: number;
 }
 
 export const STANDARD_EINSTELLUNGEN: Einstellungen = {
@@ -97,6 +103,10 @@ export const STANDARD_EINSTELLUNGEN: Einstellungen = {
   kostenProQmMonatSchwelle: 2.5,
   // ENTWURF: Wert vom Expertenteam bestätigen.
   warmwasserProM3Schwelle: 20,
+  // ENTWURF: Werte vom Expertenteam bestätigen.
+  kennwertSchwelle: 2,
+  kennwertMindestEuro: 50,
+  flaechenAbweichungSchwelle: 0.01,
 };
 
 export interface Regelergebnis extends Befund {

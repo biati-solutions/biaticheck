@@ -69,15 +69,20 @@ function Ergebnis({ s1, beantworte, children }: { s1: Stufe1; beantworte: Aktion
   const f = s1.fehlerpotenzial;
   const anzahl = f.anzahl.abweichung + f.anzahl.auffaelligkeit;
   const summe = f.sicher + f.zuKlaeren;
+  const saldo = s1.kosten.saldo;
+  // „Nicht bezahlen“ nur, wenn die Nachforderung insgesamt entfällt. Sonst gilt: unter Vorbehalt zahlen und zurückfordern.
+  const entfaellt = saldo !== undefined && saldo > 0 && f.sicher >= saldo;
   const titel =
     f.sicher > 0
-      ? `${euro(f.sicher)} müssen Sie nicht bezahlen.`
+      ? entfaellt
+        ? `${euro(f.sicher)} müssen Sie nicht bezahlen.`
+        : `${euro(f.sicher)} sind falsch abgerechnet.`
       : summe > 0
         ? `Bis zu ${euro(summe)} könnten falsch abgerechnet sein.`
         : anzahl
           ? "Ihre Abrechnung hat Auffälligkeiten."
           : "Ihre Abrechnung sieht korrekt aus.";
-  const saldo = s1.kosten.saldo;
+  const zf = s1.zahlungsfrist;
 
   return (
     <section className={KARTE} aria-labelledby="ergebnis-titel">
@@ -95,6 +100,11 @@ function Ergebnis({ s1, beantworte, children }: { s1: Stufe1; beantworte: Aktion
         {saldo !== undefined && (
           <Fakt titel={saldo >= 0 ? "Ihre Nachzahlung" : "Ihr Guthaben"}>
             <dd className="text-xl font-bold tabular-nums">{euro(Math.abs(saldo))}</dd>
+            {zf && !entfaellt && (
+              <dd className="text-[13px] text-gedaempft">
+                {zf.tageVerbleibend > 0 ? `${zf.art === "nachzahlung" ? "zahlbar" : "auszuzahlen"} bis ${datum(zf.bis)}` : `${zf.art === "nachzahlung" ? "fällig" : "auszuzahlen"} seit ${datum(zf.bis)}`}
+              </dd>
+            )}
           </Fakt>
         )}
         <Frist s1={s1} beantworte={beantworte} />
@@ -433,6 +443,9 @@ function Loesung({ s1, s2, aktionen }: { s1: Stufe1; s2: Stufe2; aktionen: Aktio
   const imPruefbedarf = new Set(s2.auffaelligkeiten.flatMap((p) => (p.status === "pruefbedarf" && p.rueckfrage ? [p.rueckfrage.feld] : [])));
   const weitereFragen = [...s2.rueckfragen, ...s1.rueckfragen.filter((r) => r.feld !== "meta.zugangAm")].filter((r) => !imPruefbedarf.has(r.feld));
 
+  // Zahlungshinweis aus dem Fahrplan: ein Satz, damit klar ist, was mit der Nachzahlung geschieht
+  const zahlen = s2.fahrplan.schritte.find((x) => /zahlen|zurückfordern/.test(x.titel));
+
   const knoepfe =
     e.aktion === "keine" || e.aktion === "unterlagen"
       ? null
@@ -459,12 +472,25 @@ function Loesung({ s1, s2, aktionen }: { s1: Stufe1; s2: Stufe2; aktionen: Aktio
           {e.titel}
         </h2>
         <p>{e.text}</p>
+        {zahlen && (
+          <p className="text-[15px] opacity-85">
+            {zahlen.titel}
+            {zahlen.bis ? ` bis ${datum(zahlen.bis)}` : ""}.
+          </p>
+        )}
         {knoepfe && <div className="flex flex-wrap gap-3">{knoepfe}</div>}
       </section>
 
-      {weg === "schreiben" && <Anschreiben s2={s2} />}
+      {weg === "schreiben" && (
+        <>
+          <Anschreiben s2={s2} />
+          <WeitereSchreiben s2={s2} />
+        </>
+      )}
       {weg === "beratung" && <Beratung beratungAnfragen={aktionen.beratungAnfragen} />}
 
+
+      {s2.positionen.length > 0 && <Positionen liste={s2.positionen} />}
 
       {(offen.length > 0 || weitereFragen.length > 0) && (
         <details className={`${KARTE} [&[open]>summary]:mb-2`}>
@@ -537,6 +563,61 @@ function Anschreiben({ s2 }: { s2: Stufe2 }) {
         </button>
       </div>
     </section>
+  );
+}
+
+/** Erinnerungsschreiben und Bitte um Belegeinsicht – eingeklappt, bis sie gebraucht werden. */
+function WeitereSchreiben({ s2 }: { s2: Stufe2 }) {
+  const schreiben = [
+    s2.belegeinsicht ? { id: "belegeinsicht", titel: "Nur die Belege anfordern", ...s2.belegeinsicht } : undefined,
+    s2.nachfassschreiben ? { id: "nachfassen", titel: "Keine Antwort nach 14 Tagen? Erinnerung senden", ...s2.nachfassschreiben } : undefined,
+  ].filter((x) => x !== undefined);
+  if (schreiben.length === 0) return null;
+  return (
+    <>
+      {schreiben.map((b) => (
+        <details key={b.id} className={`${KARTE} [&[open]>summary]:mb-2`}>
+          <summary className="cursor-pointer font-semibold">{b.titel}</summary>
+          <label htmlFor={`schreiben-${b.id}`} className="grid gap-1 text-sm">
+            <span className="text-gedaempft">Betreff: {b.betreff}</span>
+            <textarea id={`schreiben-${b.id}`} readOnly defaultValue={b.text} rows={10} className="w-full rounded-lg border border-linie bg-grund px-3 py-2 font-sans text-sm leading-relaxed text-text" />
+          </label>
+          {b.id === "belegeinsicht" && s2.fahrplan.belegPruefliste && (
+            <ul className="grid gap-1 text-sm text-gedaempft">
+              {s2.fahrplan.belegPruefliste.map((punkt) => (
+                <li key={punkt}>{punkt}</li>
+              ))}
+            </ul>
+          )}
+          <a href={`mailto:?subject=${encodeURIComponent(b.betreff)}&body=${encodeURIComponent(b.text)}`} className={`${KNOPF_NEBEN} justify-self-start`}>
+            Per E-Mail senden
+          </a>
+        </details>
+      ))}
+    </>
+  );
+}
+
+const BEWERTUNG: Record<Stufe2["positionen"][number]["bewertung"], string> = { in_ordnung: "in Ordnung", fehler: "Fehler", klaeren: "zu klären", offen: "noch offen" };
+
+/** Alle Kostenpositionen mit Bewertung – eingeklappt. */
+function Positionen({ liste }: { liste: Stufe2["positionen"] }) {
+  return (
+    <details className={`${KARTE} [&[open]>summary]:mb-2`}>
+      <summary className="cursor-pointer font-semibold">Alle {liste.length} Positionen im Überblick</summary>
+      <ul className="grid">
+        {liste.map((p) => (
+          <li key={p.id} className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 border-t border-linie py-2.5 text-[15px] first:border-0 first:pt-0">
+            <span className="min-w-0">{p.bezeichnung}</span>
+            <span className="whitespace-nowrap tabular-nums">{euro(p.anteilMieter)}</span>
+            <span className={`text-[13px] ${p.bewertung === "fehler" || p.bewertung === "klaeren" ? "text-warn-text" : "text-gedaempft"}`}>
+              {BEWERTUNG[p.bewertung]}
+              {p.beleg ? ` · Beleg anfordern: ${p.beleg}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

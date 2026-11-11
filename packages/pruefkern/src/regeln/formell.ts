@@ -55,7 +55,7 @@ export const F01_Abrechnungszeitraum: Regel = {
  */
 export const F02_Abrechnungsfrist: Regel = {
   id: "F-02",
-  version: "2.0.0",
+  version: "2.1.0",
   titel: "Abrechnungsfrist eingehalten",
   bereich: "formell",
   grundlage: "§ 556 Abs. 3 Satz 2 und 3 BGB",
@@ -89,7 +89,7 @@ export const F02_Abrechnungsfrist: Regel = {
             status: "pruefbedarf",
             titel: "Abrechnung möglicherweise verspätet",
             erklaerung: `Nach den ausgelesenen Daten (Abrechnungszeitraum ${datumDE(z.von)} bis ${datumDE(z.bis)}, erhalten am ${datumDE(stichtag)}) wäre die Frist am ${datumDE(fristEnde)} abgelaufen. Dann müssten Sie die Nachzahlung von ${euro(saldo)} nicht zahlen. Weil davon viel abhängt, bestätigen wir den Abrechnungszeitraum zuerst mit der Abrechnung des Vorjahres.`,
-            naechsterSchritt: "Laden Sie die Abrechnung des Vorjahres hoch. Zahlen Sie die Nachzahlung bis zur Klärung nicht.",
+            naechsterSchritt: "Laden Sie die Abrechnung des Vorjahres hoch. Zahlen Sie die Nachzahlung bis zur Klärung nur unter Vorbehalt.",
             betragZugunstenMieter: saldo,
             beleg: { fristEnde, stichtag, saldo, zeitraum: z },
             unterlagen: ["vorjahresabrechnung"],
@@ -229,10 +229,60 @@ export const F05_Pauschale: Regel = {
   },
 };
 
+/** Gängige Abkürzungen, die in Abrechnungen verständlich sind. */
+const BEKANNTE_KUERZEL = new Set([
+  "TV", "SAT", "CO", "EG", "OG", "DG", "UG", "KG", "TG", "WW", "KW", "RWM", "WEG", "BK", "HK", "NK", "WC", "LED", "TÜV", "DIN", "GEZ", "KFZ", "PKW", "EDV", "ARD", "ZDF",
+  "ABR", "NR", "VZ", "II", "III", "IV", "ME", "WE", "HH", "GMBH", "AG", "KWH", "MWH", "QM",
+]);
+const NICHTSSAGEND = /^(sonstige[sr]?|sonstige (betriebs|neben)?kosten|diverse[s]?|verschiedene[s]?|allgemeine kosten|umlagen?|hausstrom|strom)$/i;
+
+function unbekannteKuerzel(bezeichnung: string): string[] {
+  return bezeichnung
+    .split(/[^A-Za-zÄÖÜäöüß]+/)
+    .filter((w) => /^[A-ZÄÖÜ]{2,4}$/.test(w) && !BEKANNTE_KUERZEL.has(w));
+}
+
+/**
+ * Verständliche Bezeichnungen: Der Mieter muss erkennen können, wofür er zahlt. Unverständliche Abkürzungen
+ * (AG Hamburg, 27.02.2026 – 49 C 607/24) oder Sammelbegriffe wie „Hausstrom“ (AG Hamburg, 03.03.2022 – 48 C 320/20)
+ * machen eine Position formell angreifbar. Rechtsprechung der Amtsgerichte – deshalb nur Auffälligkeit, kein Betrag.
+ */
+export const F06_Bezeichnungen: Regel = {
+  id: "F-06",
+  version: "1.0.0",
+  titel: "Verständliche Bezeichnung der Kostenpositionen",
+  bereich: "formell",
+  grundlage: "§ 259 BGB; AG Hamburg, Urt. v. 27.02.2026 – 49 C 607/24; AG Hamburg, Urt. v. 03.03.2022 – 48 C 320/20",
+  stand: "entwurf",
+  pruefe(a) {
+    return a.kostenpositionen
+      .filter((p) => p.kategorie !== "unbekannt") // nicht zuordenbare Positionen meldet I-03
+      .flatMap((p) => {
+        const name = p.bezeichnung.trim();
+        const kuerzel = unbekannteKuerzel(name);
+        const nichtssagend = NICHTSSAGEND.test(name);
+        if (!nichtssagend && kuerzel.length === 0) return [];
+        return [
+          {
+            status: "auffaelligkeit" as const,
+            titel: `Bezeichnung unklar: ${name}`,
+            erklaerung: nichtssagend
+              ? `„${name}“ (${euro(p.anteilMieter)}) lässt nicht erkennen, welche Kosten genau abgerechnet werden. Eine Abrechnung muss so bezeichnet sein, dass Sie sie ohne Fachwissen nachvollziehen können.`
+              : `„${name}“ (${euro(p.anteilMieter)}) enthält die Abkürzung ${kuerzel.join(", ")}, die nicht erklärt wird. Eine Abrechnung muss so bezeichnet sein, dass Sie sie ohne Fachwissen nachvollziehen können.`,
+            naechsterSchritt: "Bitten Sie den Vermieter, die Position verständlich zu bezeichnen und zu erläutern, welche Kosten darin enthalten sind.",
+            positionId: p.id,
+            beleg: { kuerzel, nichtssagend },
+          },
+        ];
+      });
+  },
+};
+
 export const FORMELLE_REGELN = [
   F01_Abrechnungszeitraum,
   F02_Abrechnungsfrist,
   F03_Einwendungsfrist,
   F04_Mindestangaben,
   F05_Pauschale,
+  F06_Bezeichnungen,
 ];

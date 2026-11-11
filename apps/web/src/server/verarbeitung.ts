@@ -36,6 +36,7 @@ function demoAuslesung(): Auslesung {
     hinweise: ["Demo-Modus: Statt der hochgeladenen Datei wurde die Musterabrechnung ausgewertet."],
     modell: "demo",
     nutzung: { eingabeTokens: 0, ausgabeTokens: 0 },
+    lesungen: 1,
   };
 }
 
@@ -262,13 +263,18 @@ export async function verarbeiteUnterlage(
       daten = wendeAntwortAn(daten, "meta.zeitraumBestaetigt", true);
       await tx.insert(antworten).values({ fallId, feld: "meta.zeitraumBestaetigt", wert: true });
     }
+    // Flächen der Vorjahresabrechnung nur übernehmen, wenn sie wirklich das direkt vorhergehende Jahr betrifft (Regel R-08).
+    const flaechenUebernommen = zeitraumPasst && !!verlauf.flaechen;
+    if (flaechenUebernommen) {
+      daten = { ...daten, vorjahr: { ...daten.vorjahr, kostenpositionen: daten.vorjahr?.kostenpositionen ?? [], flaechen: verlauf.flaechen } };
+    }
     const bericht = pruefeAbrechnung(daten, { heute: deps.heute?.() });
     await tx.update(faelle).set({ daten, bericht, aktualisiertAm: new Date() }).where(eq(faelle.id, fallId));
     await tx.insert(protokoll).values({
       fallId,
       akteur: "system",
       aktion: "unterlage_uebernommen",
-      details: { quelle: verlauf.quelle, eintraege: verlauf.verlauf.length, zeitraumBestaetigt: zeitraumPasst },
+      details: { quelle: verlauf.quelle, eintraege: verlauf.verlauf.length, zeitraumBestaetigt: zeitraumPasst, flaechenUebernommen },
     });
 
     const euroDE = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
@@ -284,6 +290,8 @@ export async function verarbeiteUnterlage(
       else if (r05.some((e) => e.status === "pruefbedarf")) saetze.push("Für Ihre Vorauszahlungen reicht die Unterlage noch nicht. Bitte laden Sie eine weitere hoch.");
       else saetze.push("Ihre Vorauszahlungen wurden richtig angerechnet.");
     }
+    if (flaechenUebernommen && bericht.ergebnisse.some((e) => e.regelId === "R-08" && e.status === "auffaelligkeit"))
+      saetze.push("Die Flächen weichen vom Vorjahr ab. Das haben wir als neuen Punkt aufgenommen.");
     ergebnis = { art: "uebernommen", meldung: saetze.join(" ") };
   });
   return ergebnis;

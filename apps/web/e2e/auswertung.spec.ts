@@ -24,7 +24,7 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await hochladen(page);
 
   await expect(page.getByRole("note")).toContainText("Demo-Modus");
-  await expect(page.getByText("Wir haben 4 Punkte gefunden, die Sie Geld kosten können.")).toBeVisible();
+  await expect(page.getByText("Wir haben 5 Punkte gefunden, die Sie Geld kosten können.")).toBeVisible();
   // Prüfbedarf: die 1.222,87 € zählen erst, wenn sie belegt sind
   await expect(page.getByText(/Ein weiterer Punkt mit bis zu 1\.222,87\s€ prüfen wir, sobald Sie eine Unterlage nachreichen/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Prüfbedarf: Wir brauchen noch eine Unterlage" })).toBeVisible();
@@ -43,7 +43,9 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await page.getByLabel("gültig ab, Zeile 1").fill("2024-01-01");
   await page.getByLabel("Heizkosten je Monat, Zeile 1").fill("110");
   await page.getByRole("button", { name: "Prüfen", exact: true }).click();
-  await expect(page.getByRole("heading", { name: /143,59\s€ müssen Sie nicht bezahlen/ })).toBeVisible();
+  // Ein Fehler in der Abrechnung, aber die Nachzahlung entfällt nicht: zahlen unter Vorbehalt, nicht „nicht bezahlen“
+  await expect(page.getByRole("heading", { name: /143,59\s€ sind falsch abgerechnet/ })).toBeVisible();
+  await expect(page.getByText("Ihre Nachzahlung").locator("..")).toContainText("fällig seit 28.12.2025");
   await expect(page.getByRole("heading", { name: "Prüfbedarf: Wir brauchen noch eine Unterlage" })).toBeHidden();
 
   // Modell B: Fehler sind kostenlos sichtbar, Schritte und Schreiben erst nach dem Erledigen-Paket (nicht einmal im Quelltext)
@@ -61,6 +63,8 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await page.getByRole("button", { name: /^Für 9,90\s€ erledigen$/ }).click();
   await expect(page.getByRole("heading", { name: "Schicken Sie das vorbereitete Schreiben an Ihre Hausverwaltung" })).toBeVisible();
   await expect(page.getByText("Senden Sie es bis spätestens 28.11.2026.")).toBeVisible();
+  await expect(page.getByText("Nachzahlung unter Vorbehalt zahlen.")).toBeVisible();
+  await expect(page.getByText(/Alle \d+ Positionen im Überblick/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Vorauszahlungen Heizkosten zu niedrig angerechnet" })).toBeVisible();
   // Offene Punkte sind eingeklappt
   await expect(page.getByText(/weitere Punkte prüfen wir mit Ihrem Mietvertrag/)).toBeVisible();
@@ -75,7 +79,12 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   // Weg 1: Schreiben
   await page.getByRole("button", { name: "Schreiben öffnen" }).click();
   await expect(page.locator("#anschreiben")).toHaveValue(/^Sehr geehrte Damen und Herren,/);
-  await expect(page.getByRole("link", { name: "Per E-Mail senden" })).toHaveAttribute("href", /^mailto:\?subject=Betriebskostenabrechnung%202024/);
+  await expect(page.getByRole("link", { name: "Per E-Mail senden" }).first()).toHaveAttribute("href", /^mailto:\?subject=Betriebskostenabrechnung%202024/);
+  // Erinnerung und Belegeinsicht liegen eingeklappt bereit
+  await page.getByText("Keine Antwort nach 14 Tagen? Erinnerung senden").click();
+  await expect(page.locator("#schreiben-nachfassen")).toHaveValue(/Ich halte meine Einwände aufrecht/);
+  await page.getByText("Nur die Belege anfordern").click();
+  await expect(page.locator("#schreiben-belegeinsicht")).toHaveValue(/bitte ich um Einsicht in folgende Unterlagen/);
 
   // Weg 2: Experte – erst Einwilligung, dann gesendet
   await page.getByRole("button", { name: "Lieber vom Experten erledigen lassen" }).click();

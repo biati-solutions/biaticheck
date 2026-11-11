@@ -49,6 +49,8 @@ Leitlinie: Der Kunde will keine Details, sondern eine Lösung. Wenig Text, kein 
 | Ergebnis | eine Kernaussage (z. B. „Bis zu 1.236,44 € könnten falsch abgerechnet sein.“), Anzahl der Punkte, Nachzahlung, Frist für Einspruch, Abweichung vom Durchschnitt (DMB-Betriebskostenspiegel, regional nach PLZ ab 10 Fällen) | kostenlos |
 | Lösung | **eine** Empfehlung (`empfehlung`) mit Hauptknopf: Schreiben an die Hausverwaltung oder Experten beauftragen; darunter die beanstandeten Punkte als Einzeiler (`kurz`); Punkte, die nur mit dem Mietvertrag prüfbar sind, eingeklappt | nach Freischaltung |
 
+Seit v0.5 enthält Stufe 2 zusätzlich ein Erinnerungsschreiben, ein eigenes Schreiben zur Belegeinsicht mit Prüfliste und eine Übersicht aller Positionen mit Bewertung. Stufe 1 nennt neben der Einspruchsfrist die Zahlungsfrist (30 Tage nach Zugang). Der Zahlungshinweis lautet im Regelfall „unter Vorbehalt zahlen“; „nicht bezahlen“ nur, wenn die Nachforderung insgesamt entfällt (Begründung im [Regelkatalog](docs/REGELKATALOG.md)).
+
 Die ausführlichen Texte (`befund`, `loesung`, `zusammenfassung`) bleiben im Datenmodell für Experten und den späteren PDF-Bericht, werden dem Kunden aber nicht angezeigt. Tests begrenzen die Länge der Kurztexte und die Textmenge der Seite.
 
 Stufe 2 wird erst nach der Freischaltung an den Browser geschickt. Lösungsvorschläge stehen in den Regeln bzw. zentral in `packages/pruefkern/src/stufen.ts` (`LOESUNGSVORSCHLAEGE`); ein Test stellt sicher, dass jeder Befund einen hat und Kundentexte keine Emojis oder Formatierungszeichen enthalten. Vergleichswerte: `packages/pruefkern/src/vergleich.ts` (Quelle je Wert).
@@ -71,7 +73,7 @@ DATABASE_URL=... UPLOAD_DIR=... DATEI_SCHLUESSEL=... pnpm --filter @biaticheck/w
 
 - Dateien werden am Inhalt erkannt (nicht an der Endung), verschlüsselt abgelegt (AES-256-GCM) und nach 90 Tagen gelöscht.
 - Zugang ohne Konto über einen Link; das Token steht hinter `#`, wird nie an den Server übertragen und nur als Hash gespeichert.
-- Die KI liest nur aus. Rechnen und Bewerten übernehmen feste, getestete Regeln. Unstimmige Auslesungen gehen an einen Experten.
+- Die KI liest nur aus. Rechnen und Bewerten übernehmen feste, getestete Regeln. Unstimmige Auslesungen werden ein zweites Mal gelesen und gehen an einen Experten, wenn sie unstimmig bleiben.
 - Die kostenlose Erstauswertung wird serverseitig gefiltert; Inhalte des bezahlten Berichts erreichen den Browser nicht.
 - Fehlkonfiguration (z. B. fehlender Schlüssel im Produktivbetrieb) verhindert den Serverstart.
 - Ratenbegrenzung für Uploads schützt vor Missbrauch und unkontrollierten API-Kosten.
@@ -81,7 +83,7 @@ DATABASE_URL=... UPLOAD_DIR=... DATEI_SCHLUESSEL=... pnpm --filter @biaticheck/w
 
 | Baustein | Status |
 |---|---|
-| Prüfkern (Schema, 29 Regeln, Rückfragen, Ergebnisstufen mit Prüfbedarf, Kostenvergleich) | ✅ v0.4 (Regeln im Entwurf) |
+| Prüfkern (Schema, 38 Regeln, Rückfragen, Ergebnisstufen mit Prüfbedarf, Kostenvergleich) | ✅ v0.5 (Regeln im Entwurf) |
 | Golden Set | 1 echter Fall (G-001) |
 | Auslesen (PDF → Schema, Selbstkontrolle) | ✅ – Live-Test mit API-Schlüssel ausstehend |
 | Web-App: Upload, Erstauswertung, Rückfragen (mobil) | ✅ |

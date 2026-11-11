@@ -108,7 +108,7 @@ export const I03_NichtZugeordnet: Regel = {
 
 export const I04_Heizkosten: Regel = {
   id: "I-04",
-  version: "1.0.0",
+  version: "1.1.0",
   titel: "Heizkosten verbrauchsabhängig abgerechnet",
   bereich: "inhaltlich",
   grundlage: "§§ 7, 8, 12 HeizkostenV",
@@ -146,6 +146,26 @@ export const I04_Heizkosten: Regel = {
       });
     }
 
+    // Warmwasser: ohne Zähler (Schätzung, Formel, Verdunster) dürfen die Warmwasserkosten um 15 % gekürzt werden.
+    // Nicht zusätzlich, wenn schon die gesamten Heizkosten gekürzt werden.
+    const w = h.warmwasser;
+    if (w?.verbrauchErfasst === false && h.verbrauchErfasst !== false) {
+      const kuerzung = w.anteilMieter !== undefined && w.anteilMieter > 0 ? runde(w.anteilMieter * 0.15) : undefined;
+      befunde.push({
+        status: kuerzung !== undefined ? "abweichung" : "auffaelligkeit",
+        titel: "Warmwasser nicht nach Verbrauch abgerechnet",
+        erklaerung:
+          "Ihr Warmwasserverbrauch wurde nicht mit einem Zähler erfasst, sondern geschätzt oder nach einer Formel berechnet. Dann dürfen Sie die Warmwasserkosten um 15 % kürzen." +
+          (kuerzung === undefined ? " Wie hoch Ihr Warmwasseranteil ist, geht aus den Unterlagen nicht hervor." : ""),
+        naechsterSchritt:
+          kuerzung !== undefined
+            ? `Kürzen Sie die Warmwasserkosten um 15 % (${euro(kuerzung)}) und teilen Sie dies dem Vermieter schriftlich mit.`
+            : "Lassen Sie sich Ihren Warmwasseranteil nennen und kürzen Sie ihn um 15 %.",
+        betragZugunstenMieter: kuerzung,
+        beleg: { warmwasser: true, anteilMieter: w.anteilMieter, kuerzung },
+      });
+    }
+
     const p = h.verbrauchsanteilProzent;
     if (p === undefined) {
       befunde.push({
@@ -176,10 +196,11 @@ export const I04_Heizkosten: Regel = {
 
 /** Ende der Übergangsfrist für die Umlage von Kabel-/Antennenkosten. */
 const KABEL_STICHTAG = "2024-07-01";
+const KABEL_AUSNAHME = /glasfaser|bereitstellungsentgelt|betriebsstrom/i;
 
 export const I05_KabelTV: Regel = {
   id: "I-05",
-  version: "1.0.0",
+  version: "1.1.0",
   titel: "Kabel-/SAT-Kosten nur bis 30.06.2024 umlagefähig",
   bereich: "inhaltlich",
   grundlage: "§ 2 Nr. 15 BetrKV i. V. m. § 230 Abs. 4 TKG",
@@ -190,6 +211,15 @@ export const I05_KabelTV: Regel = {
     return a.kostenpositionen
       .filter((p) => p.kategorie === "antenne_kabel")
       .map((p): Befund => {
+        // Weiter zulässig: Betriebsstrom der Verteilanlage und das Glasfaserbereitstellungsentgelt (§ 72 TKG).
+        if (KABEL_AUSNAHME.test(p.bezeichnung)) {
+          return {
+            status: "ok",
+            titel: `Weiter umlagefähig: ${p.bezeichnung}`,
+            erklaerung: "Betriebsstrom der Anlage und ein Glasfaserbereitstellungsentgelt dürfen auch nach dem 30.06.2024 umgelegt werden.",
+            positionId: p.id,
+          };
+        }
         if (vergleiche(z.von, KABEL_STICHTAG) >= 0) {
           return {
             status: "abweichung",
@@ -428,12 +458,13 @@ export const I10_Rauchwarnmelder: Regel = {
 
 /** Hauswart: Reparatur-, Verwaltungs- und Bereitschaftsanteile sind nicht umlagefähig und müssen herausgerechnet werden. */
 const HAUSWART_DURCHSCHNITT = 0.37; // € je m² und Monat, DMB-Betriebskostenspiegel 2024
+const HAUSWART_PAUSCHALABZUG = 0.2;
 export const I11_Hauswart: Regel = {
   id: "I-11",
-  version: "1.0.0",
+  version: "1.1.0",
   titel: "Hauswart ohne Reparatur- und Verwaltungsanteil",
   bereich: "inhaltlich",
-  grundlage: "§ 2 Nr. 14 BetrKV; § 1 Abs. 2 BetrKV",
+  grundlage: "§ 2 Nr. 14 BetrKV; § 1 Abs. 2 BetrKV; AG Leonberg, Urt. v. 22.04.2016 – 4 C 446/14",
   stand: "entwurf",
   pruefe(a) {
     const zeitraum = a.meta.nutzungszeitraum ?? a.meta.abrechnungszeitraum;
@@ -446,15 +477,19 @@ export const I11_Hauswart: Regel = {
         const teuer = jeQm !== undefined && jeQm > HAUSWART_DURCHSCHNITT * 1.3;
         if (!hinweis && !teuer)
           return { status: "ok", titel: `Hauswart im üblichen Rahmen: ${p.bezeichnung}`, erklaerung: "Die Hauswartkosten liegen im üblichen Rahmen.", positionId: p.id };
+        // Nennt schon die Bezeichnung nicht umlagefähige Tätigkeiten und fehlt eine Aufschlüsselung, setzen Gerichte
+        // pauschal 20 % ab (AG Leonberg, 22.04.2016 – 4 C 446/14). Nur als „bis zu“-Betrag, nie als sicherer Fehler.
+        const abzug = hinweis ? runde(p.anteilMieter * HAUSWART_PAUSCHALABZUG) : undefined;
         return {
           status: "auffaelligkeit",
           titel: `Reparatur- oder Verwaltungsanteil im Hauswart? ${p.bezeichnung}`,
           erklaerung: hinweis
-            ? `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) deutet auf Tätigkeiten hin, die nicht umlagefähig sind (Reparaturen, Verwaltung oder Bereitschaft).`
+            ? `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) deutet auf Tätigkeiten hin, die nicht umlagefähig sind (Reparaturen, Verwaltung oder Bereitschaft). Ohne Aufschlüsselung kommt ein pauschaler Abzug von bis zu 20 % in Betracht (${euro(abzug!)}).`
             : `„${p.bezeichnung}“ kostet ${zahlDE(jeQm!)} € je m² im Monat – deutlich mehr als üblich (etwa ${zahlDE(HAUSWART_DURCHSCHNITT)} €). Häufig sind Reparaturen oder Verwaltungsarbeiten enthalten, die herausgerechnet werden müssen.`,
           naechsterSchritt: "Verlangen Sie den Hauswartvertrag und das Leistungsverzeichnis. Anteile für Reparaturen, Verwaltung oder Bereitschaft müssen abgezogen werden.",
+          betragZugunstenMieter: abzug !== undefined && abzug > 0 ? abzug : undefined,
           positionId: p.id,
-          beleg: { jeQm, hinweis },
+          beleg: { jeQm, hinweis, abzug },
         };
       });
   },
@@ -562,6 +597,176 @@ export const I14_Grundsteuer2025: Regel = {
   },
 };
 
+/** Beginn der CO₂-Kostenaufteilung: Abrechnungszeiträume, die ab dem 01.01.2023 beginnen. */
+const CO2_STICHTAG = "2023-01-01";
+
+/**
+ * CO₂-Angaben fehlen: Weist die Heizkostenabrechnung die CO₂-Kosten und die Einstufung des Gebäudes nicht aus,
+ * darf der Mieter seinen Heizkostenanteil um 3 % kürzen. Sicher nur bei Gas und Heizöl; bei anderen oder
+ * unbekannten Energieträgern Auffälligkeit (Fernwärme fällt nur teilweise unter das Gesetz).
+ */
+export const I15_CO2Angaben: Regel = {
+  id: "I-15",
+  version: "1.0.0",
+  titel: "CO₂-Kosten in der Heizkostenabrechnung ausgewiesen",
+  bereich: "inhaltlich",
+  grundlage: "§ 7 Abs. 3 und 4 CO2KostAufG",
+  stand: "entwurf",
+  pruefe(a) {
+    const h = a.heizkosten;
+    const z = a.meta.abrechnungszeitraum;
+    if (!h || !z || vergleiche(z.von, CO2_STICHTAG) < 0) return [];
+    if (h.co2 || h.co2Ausgewiesen !== false) return [];
+    if (h.brennstoff === "strom" || h.brennstoff === "holz") return [];
+    const kuerzung = runde(h.anteilMieter * 0.03);
+    const sicher = h.brennstoff === "gas" || h.brennstoff === "heizoel";
+    return [
+      {
+        status: sicher ? "abweichung" : "auffaelligkeit",
+        titel: "CO₂-Kosten nicht ausgewiesen",
+        erklaerung: sicher
+          ? "Die Heizkostenabrechnung nennt weder die CO₂-Kosten noch die Einstufung des Gebäudes. Seit 2023 muss der Vermieter beides ausweisen und einen Teil der CO₂-Kosten selbst tragen. Fehlen die Angaben, dürfen Sie Ihren Heizkostenanteil um 3 % kürzen."
+          : "Die Heizkostenabrechnung nennt weder die CO₂-Kosten noch die Einstufung des Gebäudes. Bei Heizungen mit Gas, Öl und meist auch Fernwärme muss der Vermieter beides ausweisen. Fehlen die Angaben, kommt eine Kürzung Ihres Heizkostenanteils um 3 % in Betracht.",
+        naechsterSchritt: sicher
+          ? `Kürzen Sie die Heizkosten um 3 % (${euro(kuerzung)}) und verlangen Sie die fehlenden CO₂-Angaben.`
+          : "Fragen Sie nach dem Energieträger der Heizung und verlangen Sie die CO₂-Angaben.",
+        betragZugunstenMieter: kuerzung > 0 ? kuerzung : undefined,
+        beleg: { anteilMieter: h.anteilMieter, kuerzung, brennstoff: h.brennstoff },
+      },
+    ];
+  },
+};
+
+const VERSICHERUNG_UNZULAESSIG = /rechts?schutz|mietausfall|mietverlust|mietnomaden|hausrat|vermögensschaden|d\s*&\s*o|betriebsunterbrechung/i;
+
+/** Versicherungen: Umlagefähig sind nur Sach- und Haftpflichtversicherungen für das Gebäude. */
+export const I16_Versicherungen: Regel = {
+  id: "I-16",
+  version: "1.0.0",
+  titel: "Nur gebäudebezogene Versicherungen",
+  bereich: "inhaltlich",
+  grundlage: "§ 2 Nr. 13 BetrKV; § 1 Abs. 2 BetrKV",
+  stand: "entwurf",
+  pruefe(a) {
+    return a.kostenpositionen
+      .filter((p) => !NICHT_UMLAGEFAEHIG.includes(p.kategorie) && VERSICHERUNG_UNZULAESSIG.test(p.bezeichnung) && /versicher|schutz|ausfall/i.test(p.bezeichnung))
+      .map((p) => ({
+        status: "abweichung" as const,
+        titel: `Versicherung nicht umlagefähig: ${p.bezeichnung}`,
+        erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) schützt die wirtschaftlichen Interessen des Vermieters. Umgelegt werden dürfen nur Sach- und Haftpflichtversicherungen für das Gebäude.`,
+        naechsterSchritt: `Fordern Sie die Streichung dieser Position (${euro(p.anteilMieter)}).`,
+        betragZugunstenMieter: p.anteilMieter,
+        positionId: p.id,
+      }));
+  },
+};
+
+const RAUCHMELDER = /rauch(warn)?melder|rwm\b/i;
+/** Eindeutig keine laufenden Kosten. */
+const EINMALIG_SICHER = /anschaffung|neuanschaffung|erstbepflanzung|neuanlage|neuanpflanzung|leuchtmittel|glühbirne|glühlampe|feuerlöscher.*(kauf|miet|leasing)|(kauf|miet|leasing).*feuerlöscher/i;
+/** Deutet auf einen einmaligen Anlass hin – nur mit Beleg zu klären. */
+const EINMALIG_MOEGLICH = /einmalig|sonderreinigung|baureinigung|verstopfung|rohrreinigung|rohrspülung|entrümpelung|sperrmüll|graffiti|installation|baumfäll/i;
+
+/**
+ * Einmalige Kosten und Anschaffungen sind keine Betriebskosten: Betriebskosten fallen laufend an.
+ * Eindeutige Bezeichnungen (Anschaffung, Erstbepflanzung, Leuchtmittel) sind ein Fehler,
+ * Hinweise auf einen einmaligen Anlass eine Auffälligkeit, die sich nur mit der Rechnung klären lässt.
+ */
+export const I17_EinmaligeKosten: Regel = {
+  id: "I-17",
+  version: "1.0.0",
+  titel: "Keine einmaligen Kosten und Anschaffungen",
+  bereich: "inhaltlich",
+  grundlage: "§ 556 Abs. 1 BGB; § 1 Abs. 1 BetrKV (laufende Kosten)",
+  stand: "entwurf",
+  pruefe(a) {
+    return a.kostenpositionen
+      .filter((p) => !NICHT_UMLAGEFAEHIG.includes(p.kategorie) && !RAUCHMELDER.test(p.bezeichnung))
+      .flatMap((p): Befund[] => {
+        if (EINMALIG_SICHER.test(p.bezeichnung)) {
+          return [
+            {
+              status: "abweichung",
+              titel: `Keine laufenden Kosten: ${p.bezeichnung}`,
+              erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) sind Kosten für eine Anschaffung oder einmalige Maßnahme. Umgelegt werden dürfen nur Kosten, die laufend anfallen.`,
+              naechsterSchritt: `Fordern Sie die Streichung dieser Position (${euro(p.anteilMieter)}).`,
+              betragZugunstenMieter: p.anteilMieter,
+              positionId: p.id,
+            },
+          ];
+        }
+        if (EINMALIG_MOEGLICH.test(p.bezeichnung)) {
+          return [
+            {
+              status: "auffaelligkeit",
+              titel: `Einmalige Kosten? ${p.bezeichnung}`,
+              erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) klingt nach einem einmaligen Anlass. Umgelegt werden dürfen nur Kosten, die regelmäßig anfallen – eine Reinigung nach einer Verstopfung etwa nicht, eine turnusmäßige Reinigung schon.`,
+              naechsterSchritt: "Lassen Sie sich die Rechnung zeigen und fragen Sie, ob die Leistung regelmäßig anfällt.",
+              betragZugunstenMieter: p.anteilMieter > 0 ? p.anteilMieter : undefined,
+              positionId: p.id,
+            },
+          ];
+        }
+        return [];
+      });
+  },
+};
+
+const HAUSWART_WORT = /hauswart|hausmeister/i;
+const HAUSWART_NEBENLEISTUNG = /garten|grün|reinigung|winterdienst|schnee/i;
+const DOPPEL_KATEGORIEN = ["gartenpflege", "gebaeudereinigung_ungeziefer"] as const;
+
+/**
+ * Hauswart: Sammelposition und Doppelabrechnung.
+ * - Hauswart und Garten/Reinigung in einer Position sind nicht nachvollziehbar (AG Hamburg, 12.08.2024 – 49 C 535/23).
+ * - Liegt der Hauswart über dem Durchschnitt und werden Garten oder Reinigung zusätzlich abgerechnet,
+ *   kann dieselbe Arbeit doppelt enthalten sein.
+ */
+export const I18_HauswartDoppelt: Regel = {
+  id: "I-18",
+  version: "1.0.0",
+  titel: "Hauswart: keine Sammelposition, keine Doppelabrechnung",
+  bereich: "inhaltlich",
+  grundlage: "§ 2 Nr. 9, 10, 14 BetrKV; § 259 BGB; AG Hamburg, Urt. v. 12.08.2024 – 49 C 535/23",
+  stand: "entwurf",
+  pruefe(a) {
+    const befunde: Befund[] = [];
+    for (const p of a.kostenpositionen) {
+      if (HAUSWART_WORT.test(p.bezeichnung) && HAUSWART_NEBENLEISTUNG.test(p.bezeichnung)) {
+        befunde.push({
+          status: "auffaelligkeit",
+          titel: `Sammelposition: ${p.bezeichnung}`,
+          erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) fasst mehrere Kostenarten zusammen. Hauswart, Gartenpflege und Reinigung müssen getrennt ausgewiesen werden, sonst sind die Kosten nicht nachvollziehbar.`,
+          naechsterSchritt: "Verlangen Sie eine getrennte Aufstellung der Kosten je Kostenart.",
+          positionId: p.id,
+          beleg: { sammelposition: true },
+        });
+      }
+    }
+
+    const hauswart = a.kostenpositionen.filter((p) => p.kategorie === "hauswart");
+    const daneben = a.kostenpositionen.filter((p) => (DOPPEL_KATEGORIEN as readonly string[]).includes(p.kategorie) || /winterdienst/i.test(p.bezeichnung));
+    const zeitraum = a.meta.nutzungszeitraum ?? a.meta.abrechnungszeitraum;
+    const flaeche = a.flaechen?.wohnflaecheMieter;
+    if (hauswart.length && daneben.length && zeitraum && flaeche) {
+      const summe = hauswart.reduce((x, p) => x + p.anteilMieter, 0);
+      const jeQm = runde(summe / flaeche / monateIm(zeitraum.von, zeitraum.bis));
+      if (jeQm > HAUSWART_DURCHSCHNITT) {
+        const namen = daneben.map((p) => `„${p.bezeichnung}“`).join(", ");
+        befunde.push({
+          status: "auffaelligkeit",
+          titel: "Hauswart und Garten oder Reinigung doppelt?",
+          erklaerung: `Der Hauswart kostet ${zahlDE(jeQm)} € je m² im Monat und liegt damit über dem Durchschnitt (etwa ${zahlDE(HAUSWART_DURCHSCHNITT)} €). Zusätzlich werden ${namen} abgerechnet. Erledigt der Hauswart diese Arbeiten mit, dürfen sie nicht noch einmal berechnet werden.`,
+          naechsterSchritt: "Lassen Sie sich das Leistungsverzeichnis des Hauswarts zeigen und fragen Sie, wer Gartenpflege und Reinigung ausführt.",
+          positionId: hauswart[0]!.id,
+          beleg: { jeQm, daneben: daneben.map((p) => p.id) },
+        });
+      }
+    }
+    return befunde;
+  },
+};
+
 export const INHALTLICHE_REGELN = [
   I01_NichtUmlagefaehig,
   I02_SonstigeKosten,
@@ -577,4 +782,8 @@ export const INHALTLICHE_REGELN = [
   I12_Gewerbe,
   I13_Leerstand,
   I14_Grundsteuer2025,
+  I15_CO2Angaben,
+  I16_Versicherungen,
+  I17_EinmaligeKosten,
+  I18_HauswartDoppelt,
 ];

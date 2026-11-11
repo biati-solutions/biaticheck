@@ -1,6 +1,7 @@
 import { euro, runde, tageInklusive, zahlDE } from "../hilfen";
 import type { Befund, Regel } from "../regel";
 import { KOSTENKATEGORIEN } from "../schema";
+import { DMB_BETRIEBSKOSTENSPIEGEL, kostenJeQmMonat, VERGLEICHSGRUPPEN, waehleReferenz, type Vergleichsgruppe } from "../vergleich";
 
 export const P01_Vorjahresvergleich: Regel = {
   id: "P-01",
@@ -10,7 +11,8 @@ export const P01_Vorjahresvergleich: Regel = {
   grundlage: "Wirtschaftlichkeitsgebot, § 556 Abs. 3 Satz 1 Hs. 2 BGB",
   stand: "entwurf",
   pruefe(a, { einstellungen }) {
-    if (!a.vorjahr) {
+    // Liegen aus dem Vorjahr nur Flächen vor (keine Kostenpositionen), gilt das Vorjahr hier als nicht vorhanden.
+    if (!a.vorjahr || a.vorjahr.kostenpositionen.length === 0) {
       return [
         {
           status: "nicht_pruefbar",
@@ -156,4 +158,56 @@ export const P03_Warmwasser: Regel = {
   },
 };
 
-export const PLAUSIBILITAETS_REGELN = [P01_Vorjahresvergleich, P02_KostenProQm, P03_Warmwasser];
+/**
+ * Gruppen ohne eigenen Kennwert-Befund: Heizung (eigene Regeln), Hauswart (I-11), Sammelgruppe „Sonstige“ (I-02)
+ * und Wasser/Abwasser – dort hängen die Kosten vom Verbrauch und der Personenzahl ab, nicht vom Vermieter.
+ */
+const OHNE_KENNWERT: Vergleichsgruppe[] = ["heizung_warmwasser", "hauswart", "sonstige", "wasser_abwasser"];
+
+/**
+ * Kennwert je Kostenart: Vergleich jeder Kostenart mit dem Betriebskostenspiegel. Ein hoher Wert beweist keinen
+ * Fehler (AG Berlin-Wedding, 17.01.2024 – 7 C 554/22), zeigt aber, wo sich die Belegeinsicht lohnt.
+ * Deshalb Auffälligkeit ohne Betrag; im Schreiben wird nur um die Belege gebeten, kein Einwand erhoben.
+ */
+export const P04_KennwertJeKostenart: Regel = {
+  id: "P-04",
+  version: "1.0.0",
+  titel: "Einzelne Kostenarten im üblichen Rahmen",
+  bereich: "plausibilitaet",
+  grundlage: "Wirtschaftlichkeitsgebot, § 556 Abs. 3 Satz 1 Hs. 2 BGB; Betriebskostenspiegel des Deutschen Mieterbunds (Schwellenwert vom Expertenteam festzulegen)",
+  stand: "entwurf",
+  pruefe(a, { einstellungen }) {
+    const ihr = kostenJeQmMonat(a);
+    const flaeche = a.flaechen.wohnflaecheMieter;
+    const zeitraum = a.meta.nutzungszeitraum ?? a.meta.abrechnungszeitraum;
+    if (!ihr || !flaeche || !zeitraum) return [];
+    const jahr = a.meta.abrechnungszeitraum ? Number(a.meta.abrechnungszeitraum.bis.slice(0, 4)) : undefined;
+    const ref = waehleReferenz(jahr);
+    const werte = Object.keys(ref.gruppen).length > 0 ? ref.gruppen : DMB_BETRIEBSKOSTENSPIEGEL.find((r) => Object.keys(r.gruppen).length > 0)!.gruppen;
+    const monate = tageInklusive(zeitraum.von, zeitraum.bis) / (365.25 / 12);
+
+    const befunde: Befund[] = [];
+    let geprueft = 0;
+    for (const gruppe of Object.keys(ihr.gruppen) as Vergleichsgruppe[]) {
+      const durchschnitt = werte[gruppe];
+      if (OHNE_KENNWERT.includes(gruppe) || !durchschnitt) continue;
+      geprueft++;
+      const wert = runde(ihr.gruppen[gruppe]!);
+      const mehrkosten = runde((wert - durchschnitt) * flaeche * monate);
+      if (wert <= durchschnitt * einstellungen.kennwertSchwelle || mehrkosten <= einstellungen.kennwertMindestEuro) continue;
+      const name = VERGLEICHSGRUPPEN[gruppe].name;
+      befunde.push({
+        status: "auffaelligkeit",
+        titel: `Überdurchschnittlich teuer: ${name}`,
+        erklaerung: `${name} kostet bei Ihnen ${zahlDE(wert)} € je m² im Monat. Im Bundesdurchschnitt sind es ${zahlDE(durchschnitt)} €. Das sind für Ihre Wohnung etwa ${euro(mehrkosten)} mehr als üblich. Hohe Kosten sind kein Fehler, sollten aber belegt werden.`,
+        naechsterSchritt: `Lassen Sie sich die Rechnungen und Verträge zu ${name} zeigen.`,
+        beleg: { gruppe, name, wert, durchschnitt, mehrkosten, quelle: ref.quelle },
+      });
+    }
+    if (befunde.length > 0) return befunde;
+    if (geprueft === 0) return [];
+    return [{ status: "ok", titel: "Kostenarten im üblichen Rahmen", erklaerung: `${geprueft} Kostenart(en) mit dem Betriebskostenspiegel verglichen – keine liegt deutlich über dem Durchschnitt.`, beleg: { geprueft } }];
+  },
+};
+
+export const PLAUSIBILITAETS_REGELN = [P01_Vorjahresvergleich, P02_KostenProQm, P03_Warmwasser, P04_KennwertJeKostenart];

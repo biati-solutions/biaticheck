@@ -27,6 +27,10 @@ export const ANTWORT_FELDER: Readonly<Record<string, Antworttyp>> = {
   "mietvertrag.mietbeginn": "datum",
   "mietvertrag.mietende": "datum",
   "mietvertrag.wohnflaeche": "zahl",
+  "meta.zwischenablesung": "janein",
+  "meta.nachzahlungGezahlt": "janein",
+  "heizkosten.co2Ausgewiesen": "janein",
+  "heizkosten.warmwasser.verbrauchErfasst": "janein",
   // Wird beim Nachreichen der Vorjahresabrechnung gesetzt (nicht vom Kunden abgefragt).
   "meta.zeitraumBestaetigt": "janein",
   // Antwort ist ein weiteres Dokument (Upload) – wird über das Auslesen übernommen.

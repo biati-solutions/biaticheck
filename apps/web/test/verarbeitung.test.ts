@@ -243,6 +243,21 @@ describe("Möglicherweise verspätete Abrechnung: Vorjahresabrechnung bestätigt
     expect((await lade(id)).bericht!.zusammenfassung.einsparpotenzial).toBe(0);
   });
 
+  it("passende Vorjahresabrechnung mit anderer Gesamtfläche: Flächen werden übernommen und als neuer Punkt gemeldet (R-08)", async () => {
+    const id = await spaeterFall();
+    const client = fakeClient(() => ({
+      stop_reason: "end_turn",
+      parsed_output: { dokument: "vorjahresabrechnung", verlauf: [], abrechnungszeitraum: { von: "2023-01-01", bis: "2023-12-31" }, wohnflaecheMieter: 84.28, gesamtflaeche: 3500, hinweis: "" },
+    })).client;
+    const ergebnis = await verarbeiteUnterlage(id, { daten: png, mimeType: "image/png", art: "vorjahr" }, deps({ client }));
+    expect(ergebnis.meldung).toContain("Die Flächen weichen vom Vorjahr ab.");
+    const fall = await lade(id);
+    expect(fall.daten!.vorjahr).toEqual({ kostenpositionen: [], flaechen: { wohnflaecheMieter: 84.28, gesamtflaeche: 3500 } });
+    expect(fall.bericht!.ergebnisse.find((e) => e.regelId === "R-08")).toMatchObject({ status: "auffaelligkeit", titel: "Gesamtfläche kleiner als im Vorjahr" });
+    // Nur Flächen aus dem Vorjahr: der Kostenvergleich (P-01) bleibt offen statt alles als „neue Kostenart“ zu melden
+    expect(fall.bericht!.ergebnisse.filter((e) => e.regelId === "P-01").map((e) => e.status)).toEqual(["nicht_pruefbar"]);
+  });
+
   it("passende Vorjahresabrechnung: Frist sicher versäumt, Nachzahlung entfällt", async () => {
     const id = await spaeterFall();
     const ergebnis = await verarbeiteUnterlage(id, { daten: png, mimeType: "image/png", art: "vorjahr" }, deps({ client: vorjahr({ von: "2023-01-01", bis: "2023-12-31" }) }));

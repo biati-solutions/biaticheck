@@ -20,6 +20,8 @@ export const VorauszahlungenRoh = z.object({
     .object({ von: z.string().describe("YYYY-MM-DD"), bis: z.string().describe("YYYY-MM-DD") })
     .nullable()
     .describe("Abrechnungszeitraum, wenn das Dokument selbst eine Nebenkostenabrechnung ist; sonst null"),
+  wohnflaecheMieter: z.number().nullable().describe("Wohnfläche der Wohnung in m², wenn das Dokument eine Nebenkostenabrechnung ist; sonst null"),
+  gesamtflaeche: z.number().nullable().describe("Gesamtwohnfläche des Hauses bzw. der Abrechnungseinheit in m², wenn das Dokument eine Nebenkostenabrechnung ist; sonst null"),
   hinweis: z.string().describe("kurz, was unsicher war; sonst leer"),
 });
 export type VorauszahlungenRoh = z.infer<typeof VorauszahlungenRoh>;
@@ -29,6 +31,8 @@ export interface Vorauszahlungsverlauf {
   verlauf: { ab: string; betriebskosten?: number; heizkosten?: number }[];
   /** Abrechnungszeitraum der nachgereichten Abrechnung (nur bei Vorjahresabrechnungen). */
   abrechnungszeitraum?: { von: string; bis: string };
+  /** Flächen laut Vorjahresabrechnung – für den Abgleich mit der aktuellen Abrechnung (Regel R-08). */
+  flaechen?: { wohnflaecheMieter?: number; gesamtflaeche?: number };
   hinweis: string;
 }
 
@@ -38,7 +42,7 @@ Ermittle die monatlichen Vorauszahlungen (Abschläge) für Betriebskosten und f�
 - Übernimm nur Beträge, die ausdrücklich als Vorauszahlung oder Abschlag für Betriebs- oder Heizkosten erkennbar sind. Teile eine Gesamtmiete nicht selbst auf.
 - Zahlen genau übernehmen, nicht runden. Deutsche Schreibweise umwandeln: "1.214,88" → 1214.88.
 - Übernimm keine Namen, Anschriften, Kontonummern oder IBAN.
-- Ist das Dokument selbst eine Nebenkostenabrechnung, gib ihren Abrechnungszeitraum an.
+- Ist das Dokument selbst eine Nebenkostenabrechnung, gib ihren Abrechnungszeitraum sowie die Wohnfläche der Wohnung und die Gesamtfläche des Hauses an, wie sie dort stehen.
 - Findest du nichts Passendes, gib eine leere Liste zurück.`;
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -52,12 +56,17 @@ export function bereinigeVerlauf(roh: VorauszahlungenRoh): Vorauszahlungsverlauf
     .filter((v) => v.betriebskosten !== undefined || v.heizkosten !== undefined)
     .map((v) => Object.fromEntries(Object.entries(v).filter(([, w]) => w !== undefined)) as Vorauszahlungsverlauf["verlauf"][number])
     .sort((a, b) => a.ab.localeCompare(b.ab));
+  const flaeche = (v: number | null | undefined) => (v !== null && v !== undefined && Number.isFinite(v) && v > 0 && v < 1_000_000 ? v : undefined);
+  const flaechen = Object.fromEntries(
+    Object.entries({ wohnflaecheMieter: flaeche(roh.wohnflaecheMieter), gesamtflaeche: flaeche(roh.gesamtflaeche) }).filter(([, w]) => w !== undefined),
+  ) as NonNullable<Vorauszahlungsverlauf["flaechen"]>;
   const z = roh.abrechnungszeitraum;
   const zeitraum = z && ISO.test(z.von) && ISO.test(z.bis) && z.von < z.bis ? { von: z.von, bis: z.bis } : undefined;
   return {
     quelle: roh.dokument === "vorjahresabrechnung" ? "vorjahresabrechnung" : "kontoauszug",
     verlauf,
     ...(zeitraum && roh.dokument === "vorjahresabrechnung" ? { abrechnungszeitraum: zeitraum } : {}),
+    ...(roh.dokument === "vorjahresabrechnung" && Object.keys(flaechen).length ? { flaechen } : {}),
     hinweis: roh.hinweis,
   };
 }

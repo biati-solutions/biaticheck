@@ -67,7 +67,7 @@ export function fehlerhafteAbrechnung(): AbrechnungEingabe {
   a.heizkosten = { ...a.heizkosten!, verbrauchsanteilProzent: 80 };
   a.ausgewiesen = { summeKostenMieter: 3330, saldo: 330 };
   a.mietvertrag = { vereinbarteSonstigeKosten: ["Wartung Rauchwarnmelder"] };
-  a.vorjahr!.kostenpositionen = a.vorjahr!.kostenpositionen.map((p) =>
+  a.vorjahr!.kostenpositionen = a.vorjahr!.kostenpositionen!.map((p) =>
     p.kategorie === "versicherung" ? { ...p, anteilMieter: 250 } : p,
   );
   return a;

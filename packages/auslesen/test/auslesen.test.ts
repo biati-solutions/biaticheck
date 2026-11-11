@@ -109,6 +109,44 @@ describe("Modellaufruf", () => {
     expect(anfrage.fallbacks).toBe("default");
   });
 
+  it("unstimmige erste Lesung: zweite, stimmige Lesung wird übernommen", async () => {
+    const falsch = roh();
+    falsch.summeKostenMieter = 9999;
+    const antworten = [falsch, roh()];
+    const parse = vi.fn(async () => ({ model: "claude-opus-5-5", usage: { input_tokens: 1000, output_tokens: 500 }, stop_reason: "end_turn", parsed_output: antworten.shift() }));
+    const a = await leseAus({ beta: { messages: { parse } } } as unknown as Anthropic, [PDF]);
+    expect(parse).toHaveBeenCalledTimes(2);
+    expect(a.konsistenz.konsistent).toBe(true);
+    expect(a.lesungen).toBe(2);
+    expect(a.nutzung).toEqual({ eingabeTokens: 2000, ausgabeTokens: 1000 });
+    expect(a.hinweise.join()).toContain("Erste Lesung war unstimmig");
+  });
+
+  it("zweimal unstimmig: bleibt unstimmig und geht zum Experten; abschaltbar", async () => {
+    const falsch = roh();
+    falsch.summeKostenMieter = 9999;
+    const { c, parse } = client({ parsed_output: falsch });
+    const a = await leseAus(c, [PDF]);
+    expect(parse).toHaveBeenCalledTimes(2);
+    expect(a.konsistenz.konsistent).toBe(false);
+    expect(a.hinweise).toContain("Auch die zweite Lesung war unstimmig");
+    const ohne = client({ parsed_output: falsch });
+    expect((await leseAus(ohne.c, [PDF], { zweiteLesung: false })).lesungen).toBe(1);
+    expect(ohne.parse).toHaveBeenCalledTimes(1);
+  });
+
+  it("neue Felder: CO₂-Angaben und Warmwasser werden übernommen", () => {
+    const r = roh();
+    r.heizkosten!.brennstoff = "gas";
+    r.heizkosten!.warmwasserVerbrauchErfasst = false;
+    r.heizkosten!.warmwasserAnteilMieter = 412.5;
+    const h = wandleUm(r).abrechnung.heizkosten!;
+    expect(h).toMatchObject({ brennstoff: "gas", co2Ausgewiesen: true, warmwasser: { verbrauchErfasst: false, anteilMieter: 412.5 } });
+    // CO₂-Werte gelesen, Feld aber falsch gesetzt: gilt trotzdem als ausgewiesen
+    r.heizkosten!.co2Ausgewiesen = false;
+    expect(wandleUm(r).abrechnung.heizkosten!.co2Ausgewiesen).toBe(true);
+  });
+
   it("erkennt Dokumente, die keine Nebenkostenabrechnung sind", async () => {
     const { c } = client({ parsed_output: { ...roh(), istNebenkostenabrechnung: false } });
     const a = await leseAus(c, [PDF]);
