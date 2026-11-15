@@ -58,9 +58,9 @@ test("Ablauf: Upload → Expertin erfasst und gibt frei → Kunde sieht Erstausw
   const kunde = await (await browser.newContext()).newPage();
   await kunde.goto(`/fall/${id}#${token}`);
   await expect(kunde.getByRole("heading", { name: /Bis zu 13,57\s€ könnten falsch abgerechnet sein/ })).toBeVisible();
-  // Modell B: Kurzfassung der Fehler ist kostenlos, die ausführliche Erklärung und das Schreiben nicht
-  await expect(kunde.getByText(/^Möglich sind bis zu 1\.222,87\s€\. Dafür brauchen wir Ihre Vorjahresabrechnung\./)).toBeVisible();
-  await expect(kunde.getByText(/Möglicherweise wurde die Vorauszahlung/)).toHaveCount(0);
+  // Bezahlschranke: Zusammenfassung sichtbar, gefundene Punkte und Schreiben erst nach der Zahlung
+  await expect(kunde.getByRole("heading", { name: "Ergebnis für 7,99 € freischalten" })).toBeVisible();
+  await expect(kunde.getByText(/Dafür brauchen wir Ihre Vorjahresabrechnung/)).toHaveCount(0);
   expect(await kunde.content()).not.toContain("Sehr geehrte Damen und Herren");
 });
 

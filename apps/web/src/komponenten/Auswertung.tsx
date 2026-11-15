@@ -456,23 +456,23 @@ function Befundzeile({ punkt, betragPraefix = "" }: { punkt: NonNullable<FallAns
   );
 }
 
-/** Erledigen-Paket: erscheint nur, wenn sich das Paket für den Kunden lohnt. */
+/** Bezahlschranke vor den gefundenen Punkten: erscheint, sobald es Punkte zu zeigen gibt und noch nicht bezahlt ist. */
 function Angebot({ preis, modus, freischalten }: { preis: number; modus: "test" | "aus"; freischalten: () => Promise<void> }) {
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string>();
   return (
     <section className="grid gap-4 rounded-3xl bg-dunkelkarte p-5 text-dunkelkarte-text sm:p-8" aria-labelledby="angebot-titel">
-      <p className="text-sm opacity-75">Erledigen-Paket</p>
+      <p className="text-sm opacity-75">Ihr Ergebnis ist fertig</p>
       <h2 id="angebot-titel" className="text-[clamp(22px,4vw,30px)] leading-tight font-bold tracking-tight">
-        Wir erledigen den Rest für Sie
+        Ergebnis für {euro(preis)} freischalten
       </h2>
       <ul className="grid list-disc gap-1 pl-5">
+        <li>Alle gefundenen Punkte mit Beträgen und Rechenweg</li>
         <li>Genauer Betrag, den Sie wirklich zahlen müssen</li>
         <li>Ihre nächsten Schritte mit Terminen</li>
         <li>Fertiges Schreiben an Ihre Hausverwaltung</li>
-        <li>Auf Wunsch Beratung durch unsere Experten</li>
       </ul>
-      {modus !== "test" ? <p className="font-semibold">Das Erledigen-Paket ist in Kürze verfügbar.</p> : (
+      {modus !== "test" ? <p className="font-semibold">Die Bezahlung ist in Kürze verfügbar.</p> : (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -490,7 +490,7 @@ function Angebot({ preis, modus, freischalten }: { preis: number; modus: "test" 
           }}
           className={KNOPF_HAUPT}
         >
-          {laedt ? "Einen Moment …" : `Für ${euro(preis)} erledigen`}
+          {laedt ? "Einen Moment …" : `Für ${euro(preis)} freischalten`}
         </button>
         <span className="text-sm text-gedaempft">Testmodus: Es wird nichts berechnet.</span>
       </div>
@@ -501,7 +501,7 @@ function Angebot({ preis, modus, freischalten }: { preis: number; modus: "test" 
       )}
     </div>
       )}
-      <p className="text-sm opacity-75">Sie zahlen nur, weil wir mindestens 30 € mögliche Ersparnis gefunden haben.</p>
+      <p className="text-sm opacity-75">Einmalige Zahlung. Finden wir nichts, zahlen Sie nichts.</p>
     </section>
   );
 }

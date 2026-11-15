@@ -340,16 +340,20 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       return;
     }
     const f = r.s1.fehlerpotenzial;
-    const lohnt = f.sicher + f.zuKlaeren >= MINDESTERSPARNIS;
-    const frei = z.bezahlt || !lohnt;
-    ziel.innerHTML = ergebnisKarte(r) + fehlerListe(r) + hinweisListe(r) + pruefbedarfKarte(r) + fragenKarte(r) + (frei ? loesung(r, lohnt) : angebot(r)) + gelesen(r) +
+    // Bezahlschranke: Die Zusammenfassung ist kostenlos. Gefundene Punkte, Schritte, Schreiben und Prüfweg
+    // erscheinen erst nach der Zahlung. Gibt es nichts zu zeigen, wird nichts berechnet.
+    const hatPunkte = r.s2.auffaelligkeiten.some((p) => p.status !== "nicht_pruefbar");
+    const gesperrt = hatPunkte && !z.bezahlt;
+    ziel.innerHTML = (gesperrt
+      ? ergebnisKarte(r, true) + angebot(r)
+      : ergebnisKarte(r, false) + fehlerListe(r) + hinweisListe(r) + pruefbedarfKarte(r) + fragenKarte(r) + loesung(r, hatPunkte) + gelesen(r)) +
       `<p class="leise">${z.beispiel ? "Beispiel mit einer anonymisierten Musterabrechnung. " : ""}<button class="textknopf" type="button" data-aktion="neu">Andere Abrechnung prüfen</button></p>`;
   }
 
   // Anklickbarer Wert mit kurzer Erklärung
   const wert = (inhalt, erkl) => (erkl ? `<button class="wert" type="button" aria-expanded="false" title="Antippen für die Erklärung" data-erkl="${esc(erkl)}">${inhalt}</button>` : inhalt);
 
-  function ergebnisKarte(r) {
+  function ergebnisKarte(r, gesperrt = false) {
     const s1 = r.s1, f = s1.fehlerpotenzial, k = s1.kosten, w = s1.widerspruchsfrist;
     // Einordnung: belegte Fehler, begründeter Prüfbedarf; Hinweise und Vergleichswerte zählen nicht
     const fehlerAnz = f.anzahl.abweichung, klaeren = f.anzahl.auffaelligkeit;
@@ -382,7 +386,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
     const saldo = k.saldo;
     return `<section class="karte">
       <p class="leise">${z.beispiel ? "Beispiel · " : ""}Ihre Abrechnung ${s1.abrechnungsjahr ?? ""}</p>
-      <h1>${wert(titel, s1.erklaerungen.betrag)}</h1>
+      <h1>${wert(titel, gesperrt ? "Das ist die Summe der Beträge aus den gefundenen Punkten. Die einzelnen Punkte sehen Sie nach dem Freischalten." : s1.erklaerungen.betrag)}</h1>
       <p>${unter}</p>
       ${f.pruefbedarf.anzahl ? `<p class="leise" style="font-size:15px">${f.pruefbedarf.anzahl === 1 ? "Ein weiterer Punkt" : `${f.pruefbedarf.anzahl} weitere Punkte`}${f.pruefbedarf.betrag > 0 ? ` mit bis zu ${euro(f.pruefbedarf.betrag)}` : ""} prüfen wir, sobald Sie eine Unterlage nachreichen.${f.pruefbedarf.ohneBetrag ? ` ${f.pruefbedarf.betrag > 0 ? "Teilweise ist die" : "Die"} Auswirkung ist noch nicht bezifferbar.` : ""}</p>` : ""}
       ${!r.konsistenz.konsistent ? `<p class="hinweis">Einige Zahlen konnten wir nicht sicher lesen. Bitte prüfen Sie unten die ausgelesenen Beträge.</p>` : ""}
@@ -398,8 +402,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
   }
 
   // Modell B: Prüfen und Fehler kostenlos; das Erledigen-Paket kostet nur ab 30 € möglicher Ersparnis
-  const MINDESTERSPARNIS = 30;
-  const PREIS = 9.9;
+  const PREIS = 7.99;
 
   function befundHtml(p, praefix = "") {
     const fakten = (p.fakten ?? []).map((f) => `<div><dt>${esc(f.label)}</dt><dd${f.betont ? ' class="betont"' : ""}>${esc(f.wert)}</dd></div>`).join("");
@@ -423,17 +426,16 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
   }
 
   function angebot(r) {
-    const f = r.s1.fehlerpotenzial;
-    return `<section class="karte dunkel" id="angebot"><p class="leise">Erledigen-Paket</p><h1>Wir erledigen den Rest für Sie</h1>
+    return `<section class="karte dunkel" id="angebot"><p class="leise">Ihr Ergebnis ist fertig</p><h1>Ergebnis für ${euro(PREIS)} freischalten</h1>
       <ul class="belege" style="font-size:15px;opacity:1;display:grid;gap:4px">
+        <li>Alle gefundenen Punkte mit Beträgen und Rechenweg</li>
         <li>Genauer Betrag, den Sie wirklich zahlen müssen</li>
         <li>Ihre nächsten Schritte mit Terminen</li>
         <li>Fertiges Schreiben mit Ihren Daten, direkt an die Hausverwaltung</li>
         <li>Prüfung mit Ihrem Mietvertrag</li>
-        <li>Erinnerung, wenn die Hausverwaltung nicht antwortet</li>
       </ul>
-      <div class="reihe"><button class="knopf haupt" type="button" data-aktion="freischalten">Für ${euro(PREIS)} erledigen</button></div>
-      <p class="leise">Sie zahlen nur, weil wir bis zu ${euro(f.sicher + f.zuKlaeren)} mögliche Ersparnis gefunden haben. Im Test wird nichts berechnet.</p></section>`;
+      <div class="reihe"><button class="knopf haupt" type="button" data-aktion="freischalten">Für ${euro(PREIS)} freischalten</button></div>
+      <p class="leise">Einmalige Zahlung. Finden wir nichts, zahlen Sie nichts. Im Test wird nichts berechnet.</p></section>`;
   }
 
   function loesung(r, lohnt = true) {

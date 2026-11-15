@@ -5,12 +5,12 @@ import type { faelle, Fallstatus } from "./db/schema";
  * Alles, was der Kunde über seinen Fall sieht. Wird an den Browser geschickt –
  * deshalb ausschließlich hier zusammengestellt, nie aus dem Datenbankobjekt direkt.
  *
- * Preismodell B: Prüfen und die gefundenen Fehler (Kurzfassung) sind kostenlos.
- * Das Erledigen-Paket (Stufe 2: Schritte, Schreiben, Beratung) kostet nur, wenn
- * mindestens MINDESTERSPARNIS gefunden wurde – sonst ist es ebenfalls frei.
+ * Preismodell: Die Zusammenfassung (Betrag, Fehlerpotenzial, Ergebnis, Frist, Kostenvergleich) ist kostenlos.
+ * Die gefundenen Punkte, die nächsten Schritte und das Schreiben erscheinen erst nach Zahlung von PREIS.
+ * Gibt es nichts zu zeigen (kein Fehler, kein Prüfbedarf, kein Hinweis), wird nichts berechnet.
+ * Gesperrte Inhalte werden gar nicht erst an den Browser geschickt.
  */
-export const MINDESTERSPARNIS = 30;
-export const PREIS = 9.9;
+export const PREIS = 7.99;
 
 export interface FehlerKurz {
   /** Belegter Fehler, begründeter Prüfbedarf, Hinweis oder Vergleich. */
@@ -78,16 +78,10 @@ export function erstelleFallAnsicht(
   const stufe1 = sichtbar ? erstelleStufe1(fall.bericht!, fall.daten!, { heute: optionen.heute, regional: optionen.regional }) : undefined;
   const bezahlt = Boolean(fall.bezahltAm);
   const stufe2 = stufe1 ? erstelleStufe2(fall.bericht!, fall.daten!, stufe1) : undefined;
-  const lohnt = stufe1 ? stufe1.fehlerpotenzial.sicher + stufe1.fehlerpotenzial.zuKlaeren >= MINDESTERSPARNIS : false;
-  const fehler = stufe2?.auffaelligkeiten
-    .filter((p) => istBeanstandet(p.status))
-    .map((p) => kurz(p, bezahlt || !lohnt));
-  const pruefbedarf = stufe2?.auffaelligkeiten
-    .filter((p) => p.status === "pruefbedarf")
-    .map((p) => kurz(p, bezahlt || !lohnt));
-  const hinweise = stufe2?.auffaelligkeiten
-    .filter((p) => p.status === "hinweis")
-    .map((p) => kurz(p, bezahlt || !lohnt));
+  // Bezahlschranke: sobald es Punkte zu zeigen gibt und noch nicht bezahlt ist
+  const hatPunkte = Boolean(stufe2?.auffaelligkeiten.some((p) => p.status !== "nicht_pruefbar"));
+  const gesperrt = hatPunkte && !bezahlt;
+  const liste = (filter: (p: Auffaelligkeit) => boolean) => (gesperrt ? undefined : stufe2?.auffaelligkeiten.filter(filter).map((p) => kurz(p, true)));
   return {
     id: fall.id,
     status: fall.status,
@@ -95,13 +89,14 @@ export function erstelleFallAnsicht(
     demo: fall.auslesung?.modell === "demo",
     freischaltung: optionen.zahlungModus,
     bezahlt,
-    preis: lohnt && !bezahlt ? PREIS : undefined,
-    stufe1,
-    fehler,
-    pruefbedarf,
-    hinweise,
-    unterlagen: stufe2?.unterlagen,
-    stufe2: bezahlt || !lohnt ? stufe2 : undefined,
+    preis: gesperrt ? PREIS : undefined,
+    // Die Erklärung zum Gesamtbetrag nennt die einzelnen Punkte – vor der Zahlung nur allgemein
+    stufe1: stufe1 && gesperrt ? { ...stufe1, erklaerungen: { ...stufe1.erklaerungen, betrag: "Das ist die Summe der Beträge aus den gefundenen Punkten. Die einzelnen Punkte sehen Sie nach dem Freischalten." } } : stufe1,
+    fehler: liste((p) => istBeanstandet(p.status)),
+    pruefbedarf: liste((p) => p.status === "pruefbedarf"),
+    hinweise: liste((p) => p.status === "hinweis"),
+    unterlagen: gesperrt ? undefined : stufe2?.unterlagen,
+    stufe2: gesperrt ? undefined : stufe2,
   };
 }
 

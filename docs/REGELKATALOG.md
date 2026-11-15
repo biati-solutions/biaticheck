@@ -138,3 +138,11 @@ Auffälligkeiten, die nur die KI-Kontrolle im Dokument findet, werden als Regel 
 - **Tests:** Jede Fehlerart läuft zusätzlich durch die komplette Ergebnisaufbereitung; 400 Abrechnungen mit zufällig kombinierten Fehlern müssen vollständig durchlaufen.
 - **Einlesen fehlertolerant** (`packages/auslesen/src/bereinigen.ts`): fehlende Felder, Zahlen als Text und ungültige Listenwerte werden bereinigt; unbrauchbare Zusatzangaben (Zähler, Belege, Aufschlüsselungen) werden einzeln verworfen und gemeldet.
 - **Testseite:** Jeder Fehler beim Auswerten wird mit technischen Einzelheiten angezeigt statt einer leeren Seite; ungültiges JSON vom Modell wird einmal wiederholt.
+
+## Preismodell (ab 15.11.2026)
+
+- **Kostenlos:** die Zusammenfassung – Gesamtbetrag, Fehlerpotenzial, Nachzahlung oder Guthaben, Einspruchsfrist, Kostenvergleich.
+- **Nach Zahlung von 7,99 €:** „Das haben wir gefunden“ mit allen Punkten, Prüfbedarf und Hinweisen, die nächsten Schritte, das Schreiben an die Hausverwaltung und der Prüfweg.
+- **Ohne Befund keine Zahlung:** Gibt es keinen Fehler, keinen Prüfbedarf und keinen Hinweis, wird nichts berechnet.
+- Gesperrte Inhalte werden in der Web-App nicht an den Browser geschickt. Auf der Testseite ist die Zahlung simuliert (es wird nichts berechnet).
+- Das frühere Modell (Fehler kostenlos, Erledigen-Paket 9,90 € ab 30 € Ersparnis) entfällt.

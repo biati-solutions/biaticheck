@@ -12,6 +12,12 @@ async function hochladen(page: Page) {
   await expect(page.getByRole("heading", { name: ERGEBNIS })).toBeVisible({ timeout: 15_000 });
 }
 
+/** Bezahlschranke: Die gefundenen Punkte erscheinen erst nach der Zahlung (hier im Testmodus ohne Abbuchung). */
+async function freischalten(page: Page) {
+  await page.getByRole("button", { name: /^Für 7,99\s€ freischalten$/ }).click();
+  await expect(page.getByRole("heading", { name: "Das haben wir gefunden" })).toBeVisible();
+}
+
 async function zugangsdatum(page: Page, iso: string) {
   const feld = page.locator("#frage-meta\\.zugangAm");
   await feld.fill(iso);
@@ -24,6 +30,19 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await hochladen(page);
 
   await expect(page.getByRole("note")).toContainText("Demo-Modus");
+
+  // Vor der Zahlung: nur die Zusammenfassung. Gefundene Punkte, Schritte und Schreiben fehlen – auch im Quelltext.
+  await expect(page.getByRole("heading", { name: "Ergebnis für 7,99 € freischalten" })).toBeVisible();
+  await expect(page.getByText("Ihre Nachzahlung").locator("..")).toContainText("1.214,88 €");
+  await expect(page.getByRole("heading", { name: "Das haben wir gefunden" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Prüfbedarf: Wir brauchen noch eine Unterlage" })).toHaveCount(0);
+  const gesperrt = await page.content();
+  for (const geheim of ["Satellitenanlage", "Unsere Empfehlung", "Sehr geehrte Damen und Herren", "Vorauszahlungen Heizkosten: Prüfbedarf"]) expect(gesperrt, geheim).not.toContain(geheim);
+  await page.getByRole("button", { name: ERGEBNIS }).click();
+  await expect(page.getByRole("note").filter({ hasText: "Die einzelnen Punkte sehen Sie nach dem Freischalten." })).toBeVisible();
+  await page.getByRole("button", { name: ERGEBNIS }).click();
+  await freischalten(page);
+
   // Einordnung: Vergleichswerte (Warmwasser, Kostenvergleich) und die zulässige Heizfläche zählen nicht als Fehler
   await expect(page.getByText("Wir haben einen Punkt mit begründetem Prüfbedarf gefunden.")).toBeVisible();
   // Unterlage fehlt noch → Einstufung „Prüfbedarf“
@@ -69,11 +88,8 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await expect(page.getByText("Fehlerpotenzial:").locator("..")).toContainText("hoch");
   await expect(page.getByRole("heading", { name: "Prüfbedarf: Wir brauchen noch eine Unterlage" })).toBeHidden();
 
-  // Modell B: Fehler sind kostenlos sichtbar, Schritte und Schreiben erst nach dem Erledigen-Paket (nicht einmal im Quelltext)
   await expect(page.getByRole("heading", { name: "Das haben wir gefunden" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Vorauszahlungen Heizkosten zu niedrig angerechnet" })).toBeVisible();
-  const kostenlos = await page.locator("main").innerText();
-  expect(kostenlos.length).toBeLessThan(3400);
+  await expect(page.getByRole("heading", { name: "Vorauszahlungen Heizkosten zu niedrig angerechnet" }).first()).toBeVisible();
   // Nachvollziehbar: konkrete Zahlen, Fundstelle und Grundlage je Punkt
   await expect(page.getByText("Wohneinheiten: 1 von 42")).toBeVisible();
   await expect(page.getByText(/In Ihrer Abrechnung: Seite 5 · Grundlage: § 2 Nr\. 15 BetrKV/)).toBeVisible();
@@ -81,10 +97,6 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await expect(page.getByText("2,09 m² (2,5 %)")).toBeHidden();
   await page.getByText(/Gut zu wissen:/).click();
   await expect(page.getByText("2,09 m² (2,5 %)")).toBeVisible();
-  expect(await page.content()).not.toContain("Unsere Empfehlung");
-  expect(await page.content()).not.toContain("Sehr geehrte Damen und Herren");
-
-  await page.getByRole("button", { name: /^Für 9,90\s€ erledigen$/ }).click();
   await expect(page.getByRole("heading", { name: "Schicken Sie das vorbereitete Schreiben an Ihre Hausverwaltung" })).toBeVisible();
   await expect(page.getByText("Senden Sie es bis spätestens 28.11.2026.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Vorauszahlungen Heizkosten zu niedrig angerechnet" })).toBeVisible();
@@ -119,8 +131,7 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
 test("Beratungsanfrage erscheint im Prüfbereich", async ({ page, browser }) => {
   test.skip(test.info().project.name.endsWith("handy"), "Prüfbereich ist für den Desktop gedacht");
   await hochladen(page);
-  // Unter 30 € sicherer bzw. zu klärender Ersparnis ist das Erledigen-Paket kostenlos – kein Bezahlschritt
-  await expect(page.getByRole("button", { name: /^Für 9,90\s€ erledigen$/ })).toHaveCount(0);
+  await freischalten(page);
   await page.getByRole("button", { name: "Lieber vom Experten erledigen lassen" }).click();
   await page.locator("#beratung-name").fill("Max Prüfling");
   await page.locator("#beratung-email").fill("max@example.org");
@@ -140,6 +151,7 @@ test("Beratungsanfrage erscheint im Prüfbereich", async ({ page, browser }) => 
 
 test("Möglicherweise verspätete Abrechnung: erst Prüfbedarf mit Vorjahresabrechnung, kein vorschnelles Versprechen", async ({ page }) => {
   await hochladen(page);
+  await freischalten(page);
   await zugangsdatum(page, "2026-01-15");
   await expect(page.getByRole("heading", { name: "Abrechnung möglicherweise zu spät" })).toBeVisible();
   await expect(page.getByText(/Dann müssten Sie 1\.214,88\s€ nicht zahlen\. Das bestätigen wir mit Ihrer Vorjahresabrechnung\./)).toBeVisible();
@@ -149,6 +161,7 @@ test("Möglicherweise verspätete Abrechnung: erst Prüfbedarf mit Vorjahresabre
 
 test("Prüfbedarf: Unterlage nachreichen – ohne KI-Zugang geht sie an einen Fachprüfer", async ({ page }) => {
   await hochladen(page);
+  await freischalten(page);
   await expect(page.getByRole("heading", { name: "Prüfbedarf: Wir brauchen noch eine Unterlage" })).toBeVisible();
   await expect(page.getByRole("radio")).toHaveCount(0);
   await page.getByLabel("Unterlage hochladen").setInputFiles({ name: "vorjahr.pdf", mimeType: "application/pdf", buffer: PDF });

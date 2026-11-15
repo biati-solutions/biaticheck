@@ -136,7 +136,7 @@ describe("Statusentscheidung", () => {
 });
 
 describe("Kundenansicht", () => {
-  // Verspätet zugestellt: Nachzahlung entfällt → sichere Ersparnis über 30 €, das Erledigen-Paket kostet also
+  // Verspätet zugestellt: Nachzahlung entfällt → es gibt Punkte zu zeigen, also greift die Bezahlschranke
   const daten = { ...G001, meta: { ...G001.meta, zugangAm: "2026-01-15", zeitraumBestaetigt: true } };
   const bericht = pruefeAbrechnung(daten, { heute: "2026-10-29" });
   const fall = (status: (typeof faelle.$inferSelect)["status"], bezahltAm: Date | null = null) =>
@@ -149,15 +149,20 @@ describe("Kundenansicht", () => {
     expect(a.stufe2).toBeUndefined();
   });
 
-  it("ohne Freischaltung: Stufe 1 ja, aber keinerlei Inhalte aus Stufe 2 im Browser", () => {
+  it("ohne Zahlung: nur die Zusammenfassung – keine gefundenen Punkte, keine Schritte, kein Schreiben im Browser", () => {
     const a = ansicht(fall("fertig"));
     expect(a.stufe1?.fehlerpotenzial.sicher).toBe(1214.88);
-    expect(a.preis).toBe(9.9);
+    expect(a.preis).toBe(7.99);
     expect(a.stufe2).toBeUndefined();
-    // Erklärung beim Antippen: kostenlos nur der Rechenweg aus den sichtbaren Zahlen
-    expect(a.fehler![0]!.erklaerung).toMatch(/^So kommt der Betrag zustande: Nachzahlung entfällt: 1\.214,88\s€\.$/);
-    expect(a.stufe1!.erklaerungen.betrag).toContain("Summe der belegten Fehler");
+    expect(a.fehler).toBeUndefined();
+    expect(a.pruefbedarf).toBeUndefined();
+    expect(a.hinweise).toBeUndefined();
+    expect(a.unterlagen).toBeUndefined();
+    // Die Erklärung zum Gesamtbetrag nennt vor der Zahlung keine einzelnen Punkte
+    expect(a.stufe1!.erklaerungen.betrag).toBe("Das ist die Summe der Beträge aus den gefundenen Punkten. Die einzelnen Punkte sehen Sie nach dem Freischalten.");
     const json = JSON.stringify(a);
+    expect(json).not.toContain("Abrechnung kam zu spät");
+    expect(json).not.toContain("Satellitenanlage");
     expect(json).not.toContain("geheim");
     expect(json).not.toContain("kostenpositionen");
     for (const e of bericht.ergebnisse) {
@@ -168,14 +173,28 @@ describe("Kundenansicht", () => {
     }
   });
 
-  it("unter 30 € möglicher Ersparnis ist das Erledigen-Paket kostenlos; Prüfbedarf zählt nicht mit", () => {
+  it("die Bezahlschranke gilt auch bei kleinen Beträgen; nach der Zahlung sind Punkte und Unterlagen sichtbar", () => {
     const b = pruefeAbrechnung(G001, { heute: "2026-10-29" });
-    const a = erstelleFallAnsicht({ ...fall("fertig"), bericht: b, daten: G001 } as typeof faelle.$inferSelect, { zahlungModus: "test", heute: "2026-11-06" });
-    expect(a.stufe1?.fehlerpotenzial).toMatchObject({ zuKlaeren: 13.57, pruefbedarf: { anzahl: 1, betrag: 1222.87 } });
+    const g001 = (bezahltAm: Date | null) => erstelleFallAnsicht({ ...fall("fertig", bezahltAm), bericht: b, daten: G001 } as typeof faelle.$inferSelect, { zahlungModus: "test", heute: "2026-11-06" });
+    const vorher = g001(null);
+    expect(vorher.stufe1?.fehlerpotenzial).toMatchObject({ zuKlaeren: 13.57, pruefbedarf: { anzahl: 1, betrag: 1222.87 } });
+    expect(vorher.preis).toBe(7.99);
+    expect(vorher.stufe2).toBeUndefined();
+    const nachher = g001(new Date());
+    expect(nachher.preis).toBeUndefined();
+    expect(nachher.stufe2).toBeDefined();
+    expect(nachher.fehler).toHaveLength(1);
+    expect(nachher.pruefbedarf).toHaveLength(1);
+    expect(nachher.unterlagen?.[0]?.arten).toEqual(["vorjahresabrechnung"]);
+    // Nach der Zahlung zeigt der Klick auf einen Betrag die ausführliche Erklärung
+    expect(nachher.fehler![0]!.erklaerung).toContain("Kabel-/SAT-Kosten dürfen nur bis zum 30.06.2024 umgelegt werden.");
+  });
+
+  it("ohne Befund keine Bezahlschranke: Wer nichts zu sehen bekommt, zahlt nichts", () => {
+    const a = erstelleFallAnsicht({ ...fall("fertig"), bericht: { ...bericht, ergebnisse: bericht.ergebnisse.filter((e) => e.status === "ok" || e.status === "nicht_pruefbar") } } as typeof faelle.$inferSelect, { zahlungModus: "test", heute: "2026-11-06" });
     expect(a.preis).toBeUndefined();
     expect(a.stufe2).toBeDefined();
-    expect(a.pruefbedarf).toHaveLength(1);
-    expect(a.unterlagen?.[0]?.arten).toEqual(["vorjahresabrechnung"]);
+    expect(a.fehler).toEqual([]);
   });
 
   it("nach der Freischaltung: Stufe 2 mit Lösungsvorschlägen und Anschreiben", () => {
