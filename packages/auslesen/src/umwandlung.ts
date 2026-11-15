@@ -104,11 +104,12 @@ export function wandleUm(roh: Rohdaten): Umwandlung {
       const name = normal(b.positionBezeichnung);
       const position = kostenpositionen.find((p) => normal(p.bezeichnung) === name) ?? kostenpositionen.find((p) => name.length >= 4 && (normal(p.bezeichnung).includes(name) || name.includes(normal(p.bezeichnung))));
       const zuPosition = position?.id ?? (/heiz|wärme|waerme|warmwasser/.test(name) ? "heizkosten" : undefined);
-      if (!zuPosition || !(b.betrag >= 0)) {
+      if (!zuPosition || !Number.isFinite(b.betrag)) {
         hinweise.push(`Beleg „${b.bezeichnung}“ konnte keiner Position zugeordnet werden (${b.positionBezeichnung})`);
         return [];
       }
-      return [{ zuPosition, bezeichnung: b.bezeichnung, art: b.art, betrag: b.betrag, uebernommen: b.uebernommen !== null && b.uebernommen >= 0 ? b.uebernommen : undefined, objekt: b.objekt?.trim() || undefined, fremdesObjekt: b.fremdesObjekt || undefined, beruecksichtigt: b.beruecksichtigt ?? undefined, seite: b.seite !== null && b.seite > 0 ? b.seite : undefined }];
+      // Gutschriften stehen oft mit Minuszeichen im Beleg – gespeichert wird der positive Betrag mit art "gutschrift"
+      return [{ zuPosition, bezeichnung: b.bezeichnung, art: b.betrag < 0 ? "gutschrift" : b.art, betrag: Math.abs(b.betrag), uebernommen: b.uebernommen !== null && b.uebernommen >= 0 ? b.uebernommen : undefined, objekt: b.objekt?.trim() || undefined, fremdesObjekt: b.fremdesObjekt || undefined, beruecksichtigt: b.beruecksichtigt ?? undefined, seite: b.seite !== null && b.seite > 0 ? b.seite : undefined }];
     }),
     erlaeuterungen: roh.erlaeuterungen.map((e) => ({ text: e.text.trim(), ...(e.seite !== null && e.seite > 0 ? { seite: e.seite } : {}) })).filter((e) => e.text),
     heizkosten: h

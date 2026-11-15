@@ -131,3 +131,10 @@ Auffälligkeiten, die nur die KI-Kontrolle im Dokument findet, werden als Regel 
 - **R-04 Fläche der Wohnung je Position:** Wird eine Position mit einer größeren Fläche als der Wohnfläche verteilt, ist der Mehrbetrag Anteil × (1 − Wohnfläche / angesetzte Fläche). Nennt die Abrechnung als Grund eine Garten-, Hof- oder Kellerfläche (keine Wohnfläche nach WoFlV), ist das ein belegter Fehler; ohne Grund Prüfbedarf „bis zu“. Terrassen und Balkone sind ausgenommen (anteilig Wohnfläche).
 - **I-18 Sondernutzung (neu):** Enthält eine allgemein verteilte Position ausgewiesene Kosten einer Fläche, die ein anderer allein nutzt (z. B. fremder Privatgarten), ist dieser Anteil ein belegter Fehler (BGH VIII ZR 135/03). Die Kosten der Gemeinschaftsfläche bleiben.
 - **I-18 Direkt berechnete Sonderleistung:** Wird eine Leistung der Wohnung direkt berechnet und verweist die Abrechnung auf eine Anlage oder Vereinbarung, die nicht vorliegt, entsteht Prüfbedarf ohne Betrag mit der Aufforderung, die Vertragsanlage anzufordern.
+
+## Robustheit (v0.14, aus dem Test „Abrechnung 15“)
+
+- **Ergebnisanzeige bricht nicht mehr ab:** Für einige Befunde (z. B. „Gesamtsumme falsch addiert“, „Anteil falsch berechnet“ zu Gunsten des Mieters, verspätete Abrechnung mit Guthaben) fehlte ein Lösungstext; dann entstand gar kein Ergebnis. Jetzt gibt es für jeden Befund immer einen Text (Regel, hinterlegt oder allgemein je Ergebnisart).
+- **Tests:** Jede Fehlerart läuft zusätzlich durch die komplette Ergebnisaufbereitung; 400 Abrechnungen mit zufällig kombinierten Fehlern müssen vollständig durchlaufen.
+- **Einlesen fehlertolerant** (`packages/auslesen/src/bereinigen.ts`): fehlende Felder, Zahlen als Text und ungültige Listenwerte werden bereinigt; unbrauchbare Zusatzangaben (Zähler, Belege, Aufschlüsselungen) werden einzeln verworfen und gemeldet.
+- **Testseite:** Jeder Fehler beim Auswerten wird mit technischen Einzelheiten angezeigt statt einer leeren Seite; ungültiges JSON vom Modell wird einmal wiederholt.

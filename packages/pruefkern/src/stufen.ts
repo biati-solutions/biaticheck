@@ -31,6 +31,8 @@ export const LOESUNGSVORSCHLAEGE: Readonly<Record<string, string>> = {
     "Tragen Sie das Zugangsdatum der Abrechnung ein. Dann berechnen wir, bis wann Sie Einwände erheben können.",
   "F-03:auffaelligkeit":
     "Prüfen Sie, ob Sie die Frist ohne eigenes Verschulden versäumt haben, etwa weil Ihnen Belege nicht zugänglich gemacht wurden. In diesem Fall können Einwände noch möglich sein – lassen Sie sich dazu beraten.",
+  "F-02:auffaelligkeit": "Ihr Guthaben steht Ihnen trotz der Verspätung zu. Fordern Sie die Auszahlung an, falls sie noch aussteht.",
+  "R-02:abweichung": "Fordern Sie eine berichtigte Abrechnung, in der die Einzelbeträge und die Gesamtsumme zusammenpassen.",
   "R-01:nicht_pruefbar":
     "Fordern Sie beim Vermieter eine Abrechnung an, die je Kostenart die Gesamtkosten und den Verteilerschlüssel ausweist. Nur dann ist Ihr Anteil nachvollziehbar.",
   "R-03:nicht_pruefbar":
@@ -48,9 +50,28 @@ export const LOESUNGSVORSCHLAEGE: Readonly<Record<string, string>> = {
   "P-02:nicht_pruefbar": "Tragen Sie die Wohnfläche laut Mietvertrag ein, damit wir Ihre Kosten mit üblichen Werten vergleichen können.",
 };
 
+/**
+ * Lösungsvorschlag zu einem Befund. Für jeden Befund außer „ok“ gibt es immer einen Text: den der Regel,
+ * sonst den hinterlegten, sonst einen allgemeinen je Ergebnisart. Ein fehlender Text darf nie dazu führen,
+ * dass die Ergebnisanzeige abbricht.
+ */
 export function loesungsvorschlag(e: Regelergebnis): string | undefined {
   if (e.status === "ok") return undefined;
-  return e.naechsterSchritt ?? LOESUNGSVORSCHLAEGE[`${e.regelId}:${e.status}`];
+  const eigener = e.naechsterSchritt ?? LOESUNGSVORSCHLAEGE[`${e.regelId}:${e.status}`];
+  if (eigener) return eigener;
+  const betrag = e.betragZugunstenMieter;
+  switch (e.status) {
+    case "abweichung":
+      if (betrag !== undefined && betrag < 0) return "Dieser Fehler wirkt zu Ihren Gunsten. Sie müssen dazu nichts unternehmen.";
+      return betrag ? `Fordern Sie schriftlich die Korrektur dieses Punktes (${euro(betrag)} weniger).` : "Fordern Sie schriftlich die Korrektur dieses Punktes.";
+    case "auffaelligkeit":
+    case "pruefbedarf":
+      return "Bitten Sie die Hausverwaltung um eine Erläuterung dieses Punktes und um die zugehörigen Belege.";
+    case "hinweis":
+      return "Bei Interesse können Sie die Belege zu diesem Punkt einsehen.";
+    default:
+      return "Beantworten Sie die offene Frage oder reichen Sie die fehlende Angabe nach.";
+  }
 }
 
 // ---------- Stufe 1 ----------
@@ -240,10 +261,10 @@ export function erstelleStufe1(
     },
     vergleich: v,
     erklaerungen,
-    rueckfragen: rueckfragen.map((r) => {
+    // Rückfragen ohne registriertes Antwortfeld werden ausgelassen statt die Anzeige abzubrechen
+    rueckfragen: rueckfragen.flatMap((r) => {
       const typ = antworttyp(r.feld);
-      if (!typ) throw new Error(`Rückfrage-Feld nicht registriert: ${r.feld}`);
-      return { feld: r.feld, frage: r.frage, typ };
+      return typ ? [{ feld: r.feld, frage: r.frage, typ }] : [];
     }),
   };
 }
@@ -326,8 +347,7 @@ export function erstelleStufe2(bericht: Pruefbericht, eingabe: AbrechnungEingabe
     .filter((e): e is Regelergebnis & { status: Exclude<Status, "ok"> } => e.status !== "ok")
     .sort((x, y) => REIHENFOLGE[x.status] - REIHENFOLGE[y.status] || (y.betragZugunstenMieter ?? 0) - (x.betragZugunstenMieter ?? 0))
     .map((e) => {
-      const loesung = loesungsvorschlag(e);
-      if (!loesung) throw new Error(`Kein Lösungsvorschlag für ${e.regelId}:${e.status}`);
+      const loesung = loesungsvorschlag(e)!;
       return {
         regelId: e.regelId,
         status: e.status,
@@ -354,7 +374,10 @@ export function erstelleStufe2(bericht: Pruefbericht, eingabe: AbrechnungEingabe
     auffaelligkeiten,
     rueckfragen: bericht.zusammenfassung.rueckfragen
       .filter((r) => !STUFE1_FELDER.has(r.feld))
-      .map((r) => ({ feld: r.feld, frage: r.frage, typ: antworttyp(r.feld)! })),
+      .flatMap((r) => {
+        const typ = antworttyp(r.feld);
+        return typ ? [{ feld: r.feld, frage: r.frage, typ }] : [];
+      }),
     zusammenfassung: erstelleZusammenfassung(stufe1, auffaelligkeiten),
     empfehlung: erstelleEmpfehlung(stufe1, auffaelligkeiten),
     unterlagen: sammleUnterlagen(auffaelligkeiten),

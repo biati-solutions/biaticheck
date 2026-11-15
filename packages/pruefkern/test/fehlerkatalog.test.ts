@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ALLE_REGELN, erstelleZeilenprotokoll, FEHLERKATALOG, NICHT_BERECHENBAR, pruefeAbrechnung, type AbrechnungEingabe, type Fehlerart } from "../src/index";
+import { Abrechnung, ALLE_REGELN, erstelleStufe1, erstelleStufe2, erstelleZeilenprotokoll, FEHLERKATALOG, NICHT_BERECHENBAR, pruefeAbrechnung, type AbrechnungEingabe, type Fehlerart } from "../src/index";
 
 /**
  * Nachweis für den Fehlerkatalog.
@@ -475,6 +475,15 @@ describe(`Vollständige Erkennung: jede Fehlerart in ${VARIANTEN} Zufallsvariant
       }
       // Belegte Fehler zählen exakt zum sicheren Potenzial, alles andere nie
       if (art.ergebnis === "abweichung" && art.betrag === "exakt") expect(bericht.zusammenfassung.einsparpotenzial).toBeGreaterThanOrEqual(erwartet.betrag!);
+      // Die Ergebnisanzeige darf bei keiner Fehlerart abbrechen (jeder Befund braucht Lösung, Kurzfassung und Brieftext)
+      const s1 = erstelleStufe1(bericht, a, { heute: erwartet.heute ?? HEUTE });
+      const s2 = erstelleStufe2(bericht, a, s1);
+      for (const punkt of s2.auffaelligkeiten) {
+        expect(punkt.loesung.length, `${art.id}: ${punkt.regelId} ohne Lösung`).toBeGreaterThan(10);
+        expect(punkt.kurz.titel.length, `${art.id}: ${punkt.regelId} ohne Kurztitel`).toBeGreaterThan(3);
+        expect(`${punkt.kurz.titel} ${punkt.kurz.satz} ${punkt.brief}`, `${art.id}: ${punkt.regelId}`).not.toMatch(/undefined|NaN|\[object/);
+      }
+      expect(s2.anschreiben.text).not.toMatch(/undefined|NaN|\[object/);
       // Zeilenprotokoll: kein Regelergebnis geht verloren, der Fehler steht an seiner Zeile
       const protokoll = erstelleZeilenprotokoll(bericht, a);
       const imProtokoll = protokoll.zeilen.flatMap((x) => x.pruefungen.map((q) => ({ zeile: x, q })));
@@ -491,6 +500,42 @@ describe(`Vollständige Erkennung: jede Fehlerart in ${VARIANTEN} Zufallsvariant
   it("Erkennungsquote 100 %", () => {
     expect(statistik.gesamt).toBe(FEHLERKATALOG.length * VARIANTEN);
     expect(statistik.erkannt).toBe(statistik.gesamt);
+  });
+});
+
+describe("Robustheit: mehrere Fehler zugleich brechen die Ergebnisanzeige nie ab", () => {
+  it("400 Abrechnungen mit je 2 bis 5 zufällig kombinierten Fehlerarten laufen vollständig durch", () => {
+    const ids = Object.keys(EINBAUEN);
+    for (let i = 0; i < 400; i++) {
+      const z = zufall(90_000 + i);
+      const a = korrekt(z);
+      const gewaehlt: string[] = [];
+      let heute = HEUTE;
+      for (let k = z.ganz(2, 5); k > 0; k--) {
+        const id = ids[z.ganz(0, ids.length - 1)]!;
+        try {
+          // Manche Kombinationen passen nicht zusammen (z. B. Position schon verändert) – dann überspringen
+          const e = EINBAUEN[id]!(a, z);
+          if (e.heute) heute = e.heute;
+          gewaehlt.push(id);
+        } catch {
+          /* Kombination nicht möglich */
+        }
+      }
+      // Kombinationen, die rechnerisch ungültige Testdaten erzeugen (z. B. Betrag aus gelöschten Gesamtkosten), zählen nicht
+      if (!Abrechnung.safeParse(a).success) continue;
+      const lauf = () => {
+        const bericht = pruefeAbrechnung(a, { heute });
+        const s1 = erstelleStufe1(bericht, a, { heute });
+        const s2 = erstelleStufe2(bericht, a, s1);
+        const protokoll = erstelleZeilenprotokoll(bericht, a);
+        return { bericht, s1, s2, protokoll };
+      };
+      expect(lauf, `Kombination ${gewaehlt.join(" + ")}`).not.toThrow();
+      const { bericht, s1, s2 } = lauf();
+      expect(bericht.ergebnisse.filter((e) => e.titel === "Interner Prüffehler").map((e) => `${e.regelId}: ${String(e.beleg?.fehler)}`), `Kombination ${gewaehlt.join(" + ")}`).toEqual([]);
+      expect(JSON.stringify([s1, s2.auffaelligkeiten.map((p) => [p.kurz, p.brief, p.fakten]), s2.anschreiben, s2.zusammenfassung]), `Kombination ${gewaehlt.join(" + ")}`).not.toMatch(/undefined|NaN|\[object/);
+    }
   });
 });
 

@@ -3,6 +3,7 @@ import { Rohdaten } from "../../packages/auslesen/src/rohdaten";
 import { SYSTEM_PROMPT } from "../../packages/auslesen/src/prompt";
 import { wandleUm } from "../../packages/auslesen/src/umwandlung";
 import { pruefeKonsistenz } from "../../packages/auslesen/src/konsistenz";
+import { bereinigeRohdaten } from "../../packages/auslesen/src/bereinigen";
 import { KEINE_KONTROLLE, KONTROLL_PROMPT, KontrolleRoh, kontrollbefundeAus, protokollFuerKontrolle, werteKontrolleAus } from "../../packages/auslesen/src/kontrolle";
 import { erstelleZeilenprotokoll, ALLE_REGELN, schliesstAn, erstelleStufe1, erstelleStufe2, pruefeAbrechnung, wendeAntwortAn, AntwortFehler, personalisiereAnschreiben } from "../../packages/pruefkern/src/index";
 
@@ -38,17 +39,8 @@ export function werteKontrolle(antwort: unknown, rohJson: unknown, heute: string
   return { ...kontrolle, befunde: kontrollbefundeAus(kontrolle, protokoll) };
 }
 
-/** Ältere Antworten (und das Beispiel) kennen die neuen Felder noch nicht – mit leeren Werten ergänzen. */
-function ergaenze(roh: unknown): unknown {
-  if (!roh || typeof roh !== "object") return roh;
-  const r = { zaehler: [], belege: [], erlaeuterungen: [], gezahlteVorauszahlungenBetriebskosten: null, gezahlteVorauszahlungenHeizkosten: null, gezahlteVorauszahlungenGesamt: null, gezahlteVorauszahlungenSeite: null, ...(roh as Record<string, unknown>) };
-  if (Array.isArray(r.zaehler)) r.zaehler = r.zaehler.map((x: unknown) => (x && typeof x === "object" ? { bezeichnung: null, verbrauchUebernommen: null, faktor: null, faktorLautProtokoll: null, seite: null, ...(x as object) } : x));
-  if (Array.isArray(r.belege)) r.belege = r.belege.map((x: unknown) => (x && typeof x === "object" ? { art: "rechnung", uebernommen: null, objekt: null, fremdesObjekt: false, beruecksichtigt: null, seite: null, ...(x as object) } : x));
-  if (r.heizkosten && typeof r.heizkosten === "object") r.heizkosten = { verbrauchMieter: null, verbrauchskostenMieter: null, ...(r.heizkosten as object) };
-  if (Array.isArray(r.kostenpositionen))
-    r.kostenpositionen = r.kostenpositionen.map((p: unknown) => (p && typeof p === "object" ? { unterart: null, bestandteile: [], hinweise: [], belegnummer: null, ...(p as object) } : p));
-  return r;
-}
+/** Fehlende Felder, Zahlen als Text und unbrauchbare Zusatzangaben bereinigen (siehe packages/auslesen/src/bereinigen.ts). */
+const ergaenze = (roh: unknown): unknown => bereinigeRohdaten(roh).roh;
 
 /** Rohausgabe des Modells → geprüftes Ergebnis (Stufe 1 und 2). */
 type Verlauf = { ab: string; betriebskosten?: number; heizkosten?: number }[];
@@ -61,10 +53,18 @@ export function werteAus(
   vorauszahlungen?: { verlauf: Verlauf; quelle: "vorjahresabrechnung" | "kontoauszug" | "kunde" },
   kontrollbefunde?: { beschreibung: string; textstelle: string; positionId?: string; seite?: number }[],
 ) {
-  const roh = Rohdaten.safeParse(ergaenze(rohJson));
-  if (!roh.success) return { fehler: "format", details: roh.error.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`) };
+  const bereinigt = bereinigeRohdaten(rohJson);
+  const roh = Rohdaten.safeParse(bereinigt.roh);
+  if (!roh.success) return { fehler: "format", details: roh.error.issues.slice(0, 8).map((i) => `${i.path.join(".")}: ${i.message}`) };
   if (!roh.data.istNebenkostenabrechnung) return { fehler: "keine_abrechnung" };
-  let { abrechnung, hinweise } = wandleUm(roh.data);
+  let abrechnung: ReturnType<typeof wandleUm>["abrechnung"];
+  let hinweise: string[];
+  try {
+    ({ abrechnung, hinweise } = wandleUm(roh.data));
+  } catch (e) {
+    return { fehler: "format", details: [e instanceof Error ? e.message : String(e)] };
+  }
+  hinweise = [...bereinigt.verworfen, ...hinweise];
   const konsistenz = pruefeKonsistenz(abrechnung);
   if (kontrollbefunde?.length) abrechnung = { ...abrechnung, kontrollbefunde };
   if (mietvertrag) {
@@ -82,5 +82,5 @@ export function werteAus(
   const s1 = erstelleStufe1(bericht, abrechnung, { heute });
   const s2 = erstelleStufe2(bericht, abrechnung, s1);
   const protokoll = erstelleZeilenprotokoll(bericht, abrechnung);
-  return { s1, s2, konsistenz, hinweise, protokoll, positionen: abrechnung.kostenpositionen.map((p) => ({ name: p.bezeichnung, betrag: p.anteilMieter })), heizkosten: abrechnung.heizkosten?.anteilMieter ?? null, plz: abrechnung.meta.plz ?? null, zeitraum: abrechnung.meta.abrechnungszeitraum ?? null };
+  return { s1, s2, konsistenz, hinweise, verworfen: bereinigt.verworfen, protokoll, positionen: abrechnung.kostenpositionen.map((p) => ({ name: p.bezeichnung, betrag: p.anteilMieter })), heizkosten: abrechnung.heizkosten?.anteilMieter ?? null, plz: abrechnung.meta.plz ?? null, zeitraum: abrechnung.meta.abrechnungszeitraum ?? null };
 }

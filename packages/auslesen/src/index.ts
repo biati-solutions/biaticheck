@@ -10,6 +10,7 @@ export { AuslesenFehler, MODELL, type Dokument, type Dokumenttyp } from "./model
 export { erkenneDokumenttyp } from "./dateityp";
 export { pruefeKonsistenz, type Konsistenz } from "./konsistenz";
 export { Rohdaten } from "./rohdaten";
+export { bereinigeRohdaten, zahlAusText } from "./bereinigen";
 export { KEINE_KONTROLLE, KONTROLL_PROMPT, KontrolleRoh, kontrollbefundeAus, protokollFuerKontrolle, werteKontrolleAus, type Kontrolle } from "./kontrolle";
 export { kontrolliere } from "./kontrollaufruf";
 export { wandleUm } from "./umwandlung";

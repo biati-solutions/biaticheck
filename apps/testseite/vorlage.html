@@ -195,7 +195,14 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
         `Inhalt der Abrechnung, Seite für Seite:\n${text.slice(0, 150000)}`,
         "Lies die Nebenkostenabrechnung vollständig aus.",
       ].join("\n\n");
-      const antwort = await sample.json(prompt, { modelTier: "complex", signal: ctl.signal });
+      // Liefert das Modell einmal kein gültiges JSON, wird das Auslesen einmal wiederholt
+      let antwort;
+      try { antwort = await sample.json(prompt, { modelTier: "complex", signal: ctl.signal }); }
+      catch (e) {
+        if (e?.code !== "invalid_json") throw e;
+        $("laden-text").textContent = "Das Auslesen wird wiederholt …";
+        antwort = await sample.json(prompt, { modelTier: "complex", signal: ctl.signal });
+      }
       const kontakt = {};
       for (const [k, v] of Object.entries(antwort?.kontakt ?? {})) if (typeof v === "string" && v.trim()) kontakt[k] = v.trim();
       z = neuerZustand(antwort?.abrechnung ?? antwort, false, kontakt);
@@ -233,7 +240,8 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
         prompt_too_large: "Die Datei ist zu umfangreich. Bitte laden Sie nur die Seiten der Abrechnung hoch.",
         pdf: "Die PDF-Datei konnte nicht geöffnet werden.",
       };
-      m.textContent = e?.code in texte ? texte[e.code] : "Das Lesen hat nicht geklappt. Bitte versuchen Sie es noch einmal.";
+      // Unbekannte Fehler mit Einzelheit melden, damit sie sich beheben lassen
+      m.textContent = e?.code in texte ? texte[e.code] : `Das Lesen hat nicht geklappt. Bitte versuchen Sie es noch einmal. (Einzelheit: ${String(e?.code ?? e?.message ?? e).slice(0, 200)})`;
       if (!(e?.code in texte)) console.error(e);
     } finally {
       $("laden").hidden = true;
@@ -302,7 +310,20 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
     return P.werteAus(z.roh, HEUTE, z.antworten, z.mietvertrag ?? undefined, z.vorauszahlungen ?? undefined, z.kontrolle?.befunde ?? undefined);
   }
 
+  // Die Anzeige darf nie leer bleiben: Jeder Fehler beim Auswerten oder Darstellen wird sichtbar gemeldet.
   function zeige() {
+    try { zeigeErgebnis(); }
+    catch (e) {
+      console.error(e);
+      $("start").hidden = true;
+      $("ergebnis").innerHTML = `<section class="karte"><h1>Das Ergebnis konnte nicht angezeigt werden</h1>
+        <p>Ihre Abrechnung wurde gelesen, aber bei der Auswertung ist ein Fehler aufgetreten. Bitte geben Sie uns die folgende Meldung weiter.</p>
+        <details open><summary>Technische Einzelheiten</summary><p class="leise" style="font-size:14px;word-break:break-word">${esc(String(e?.message ?? e).slice(0, 600))}</p></details>
+        <div><button class="knopf neben" type="button" data-aktion="neu">Andere Datei prüfen</button></div></section>`;
+    }
+  }
+
+  function zeigeErgebnis() {
     $("start").hidden = true;
     let r = auswertung();
     if (r.fehler === "antwort") {
@@ -314,6 +335,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
     if (r.fehler) {
       ziel.innerHTML = `<section class="karte"><h1>${r.fehler === "keine_abrechnung" ? "Das ist keine Nebenkostenabrechnung" : "Die Abrechnung konnte nicht gelesen werden"}</h1>
         <p class="leise">${r.fehler === "keine_abrechnung" ? "Bitte laden Sie die Betriebs- oder Nebenkostenabrechnung Ihres Vermieters hoch." : "Bitte versuchen Sie es noch einmal oder mit einem deutlicheren Foto."}</p>
+        ${r.details?.length ? `<details><summary>Technische Einzelheiten</summary><p class="leise" style="font-size:14px;word-break:break-word">${r.details.map(esc).join("<br>")}</p></details>` : ""}
         <div><button class="knopf neben" type="button" data-aktion="neu">Andere Datei prüfen</button></div></section>`;
       return;
     }
@@ -364,6 +386,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       <p>${unter}</p>
       ${f.pruefbedarf.anzahl ? `<p class="leise" style="font-size:15px">${f.pruefbedarf.anzahl === 1 ? "Ein weiterer Punkt" : `${f.pruefbedarf.anzahl} weitere Punkte`}${f.pruefbedarf.betrag > 0 ? ` mit bis zu ${euro(f.pruefbedarf.betrag)}` : ""} prüfen wir, sobald Sie eine Unterlage nachreichen.${f.pruefbedarf.ohneBetrag ? ` ${f.pruefbedarf.betrag > 0 ? "Teilweise ist die" : "Die"} Auswirkung ist noch nicht bezifferbar.` : ""}</p>` : ""}
       ${!r.konsistenz.konsistent ? `<p class="hinweis">Einige Zahlen konnten wir nicht sicher lesen. Bitte prüfen Sie unten die ausgelesenen Beträge.</p>` : ""}
+      ${r.verworfen?.length ? `<p class="hinweis">${r.verworfen.length === 1 ? "Eine Angabe" : `${r.verworfen.length} Angaben`} aus dem Dokument konnten wir nicht übernehmen: ${r.verworfen.map(esc).join("; ")}.</p>` : ""}
       ${z.kontrolle && (z.kontrolle.lesefehler.length || z.kontrolle.fehlendeZeilen.length || !z.kontrolle.durchgefuehrt) ? `<p class="hinweis">Die zweite Kontrolle konnte nicht alle Zeilen bestätigen. Ein Fachprüfer sollte dieses Ergebnis ansehen. Einzelheiten stehen unten unter „So haben wir geprüft“.</p>` : ""}
       <dl class="fakten">
         ${fehler}
