@@ -45,7 +45,7 @@ Dieselbe Testseite liegt zusätzlich auf GitHub Pages. Sie ist **keine zweite Te
 
 - Branch **`biati-main-test`**: enthält nur die gebaute Seite als `index.html`. Nichts von Hand dort ändern.
 - `.github/workflows/pages.yml` erzeugt den Branch bei jedem Push auf `main` neu, wenn sich Prüfkern, Auslesen oder Testseite geändert haben – nur bei bestandenen Tests.
-- **Gespeicherte Versionen** liegen als Ordner auf demselben Branch, z. B. `BiatiCheck_v1/` (dazu der Git-Tag `BiatiCheck_v1` auf `main`). Sie bleiben unverändert; der Ablauf erneuert nur die Hauptseite `index.html`. Eine neue Version nur auf ausdrücklichen Wunsch anlegen: gebaute Seite in einen neuen Ordner auf dem Branch legen und den Quellstand taggen.
+- **Gespeicherte Versionen** liegen als Ordner auf demselben Branch, z. B. `BiatiCheck_v1/` (der zugehörige Quellstand liegt auf dem Branch `BiatiCheck_v1`). Sie bleiben unverändert; der Ablauf erneuert nur die Hauptseite `index.html`. Eine neue Version nur auf ausdrücklichen Wunsch anlegen: gebaute Seite in einen neuen Ordner auf dem Branch legen und den Quellstand als gleichnamigen Branch sichern (Tags lassen sich aus Claude-Sitzungen nicht pushen).
 - Auf GitHub Pages funktioniert nur „Beispiel ansehen“. Eigene Abrechnungen auslesen geht nur über den Claude-Link oben, weil die Seite dafür Claude braucht.
 - Der Claude-Link bleibt die Seite, mit der das Team testet. Die Schritte oben gelten unverändert.
 
