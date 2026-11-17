@@ -39,6 +39,12 @@ button, input, textarea { font: inherit; }
 .laden { display: grid; gap: 10px; }
 .balken { height: 6px; border-radius: 3px; background: var(--offen-bg); overflow: hidden; }
 .balken div { height: 100%; width: 30%; background: var(--gruen); border-radius: 3px; animation: lauf 1.4s ease-in-out infinite; }
+/* Haus, das sich während des Auslesens füllt. Der Balken bleibt als Ersatz, falls die 3D-Darstellung nicht lädt. */
+.haus { height: 190px; display: none; justify-self: center; width: min(100%, 280px); }
+.laden.mit-haus .haus { display: block; }
+.laden.mit-haus .balken { display: none; }
+.laden.mit-haus { text-align: center; justify-items: center; }
+.haus canvas { display: block; width: 100%; height: 100%; }
 @keyframes lauf { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
 @media (prefers-reduced-motion: reduce) { .balken div { animation: none; width: 100%; opacity: .5; } }
 .fakten { display: grid; grid-template-columns: 1fr; margin: 0; border-top: 1px solid var(--linie); }
@@ -114,6 +120,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
 
   <section class="karte" id="laden" hidden aria-live="polite">
     <div class="laden">
+      <div class="haus" id="haus" aria-hidden="true"></div>
       <h2 id="laden-titel">Wir lesen Ihre Abrechnung</h2>
       <p class="leise" id="laden-text">Seiten werden vorbereitet …</p>
       <p class="leise">Das dauert je nach Umfang ein bis drei Minuten.</p>
@@ -155,6 +162,81 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
     $("meldung").textContent = "";
   });
 
+  // ---------- Haus, das sich füllt: zeigt den Fortschritt des Auslesens ----------
+  // three.js wird nur beim ersten Auslesen geladen. Lädt es nicht, bleibt der einfache Balken.
+  const haus = (() => {
+    let T, renderer, scene, camera, gruppe, wasser, spiegel, dachFuellung, raf = 0, ist = 0, soll = 0, decke = 0, zuletzt = 0, laeuft = false;
+    const ruhig = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const B = 1.6, H = 1.15, DACH = 0.85;
+
+    async function baue() {
+      if (renderer) return true;
+      try { T = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js"); } catch { return false; }
+      const ziel = $("haus"), stil = getComputedStyle(document.documentElement);
+      const gruen = new T.Color(stil.getPropertyValue("--gruen").trim() || "#1fa37e");
+      const linie = new T.Color(stil.getPropertyValue("--text").trim() || "#0e3b2e");
+      try { renderer = new T.WebGLRenderer({ alpha: true, antialias: true }); } catch { return false; }
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      ziel.appendChild(renderer.domElement);
+      scene = new T.Scene();
+      camera = new T.PerspectiveCamera(32, 1, 0.1, 50);
+      camera.position.set(3.4, 2.3, 4.6); camera.lookAt(0, 0.25, 0);
+      gruppe = new T.Group(); scene.add(gruppe);
+      const strich = new T.LineBasicMaterial({ color: linie, transparent: true, opacity: 0.85 });
+      const kanten = (geo) => new T.LineSegments(new T.EdgesGeometry(geo), strich);
+      // Wände
+      gruppe.add(kanten(new T.BoxGeometry(B, H, B)));
+      // Dach: Pyramide über dem Haus
+      const dachGeo = new T.ConeGeometry((B / Math.SQRT2) * 1.12, DACH, 4);
+      const dach = kanten(dachGeo); dach.rotation.y = Math.PI / 4; dach.position.y = H / 2 + DACH / 2; gruppe.add(dach);
+      dachFuellung = new T.Mesh(dachGeo, new T.MeshBasicMaterial({ color: gruen, transparent: true, opacity: 0, depthWrite: false }));
+      dachFuellung.rotation.y = Math.PI / 4; dachFuellung.position.y = dach.position.y; gruppe.add(dachFuellung);
+      // Tür und Fenster auf der Vorderseite
+      const rahmen = (b, h, x, y) => { const r = kanten(new T.PlaneGeometry(b, h)); r.position.set(x, y, B / 2 + 0.002); gruppe.add(r); };
+      rahmen(0.34, 0.6, -0.35, -H / 2 + 0.3); rahmen(0.42, 0.34, 0.35, 0.08);
+      // Füllung, die von unten nach oben steigt
+      wasser = new T.Mesh(new T.BoxGeometry(B * 0.97, H, B * 0.97), new T.MeshBasicMaterial({ color: gruen, transparent: true, opacity: 0.5, depthWrite: false }));
+      gruppe.add(wasser);
+      spiegel = new T.Mesh(new T.PlaneGeometry(B * 0.97, B * 0.97), new T.MeshBasicMaterial({ color: gruen, transparent: true, opacity: 0.9, side: T.DoubleSide, depthWrite: false }));
+      spiegel.rotation.x = -Math.PI / 2; gruppe.add(spiegel);
+      new ResizeObserver(groesse).observe(ziel); groesse();
+      return true;
+    }
+    function groesse() {
+      const z = $("haus"), b = z.clientWidth || 280, h = z.clientHeight || 190;
+      renderer.setSize(b, h, false); camera.aspect = b / h; camera.updateProjectionMatrix();
+    }
+    function bild(t) {
+      if (!laeuft) return;
+      const dt = Math.min(0.1, (t - zuletzt) / 1000 || 0); zuletzt = t;
+      // Während eine Antwort aussteht, steigt der Stand langsam weiter bis zur Obergrenze des Abschnitts
+      soll += (decke - soll) * Math.min(1, dt / 35);
+      ist += (soll - ist) * Math.min(1, dt * 3);
+      const f = Math.max(0.001, Math.min(1, ist / 0.9));
+      wasser.scale.y = f; wasser.position.y = -H / 2 + (H * f) / 2;
+      spiegel.position.y = -H / 2 + H * f + 0.001;
+      spiegel.visible = f < 0.999;
+      dachFuellung.material.opacity = Math.max(0, Math.min(1, (ist - 0.9) / 0.1)) * 0.5;
+      gruppe.rotation.y = ruhig ? -0.45 : -0.45 + Math.sin(t / 1700) * 0.32;
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(bild);
+    }
+    return {
+      async start() {
+        ist = soll = 0; decke = 0.1;
+        if (!(await baue())) return;
+        $("laden").querySelector(".laden").classList.add("mit-haus");
+        groesse();
+        if (!laeuft) { laeuft = true; zuletzt = performance.now(); raf = requestAnimationFrame(bild); }
+      },
+      /** stand: sofort erreichter Füllstand (0–1); bis: Obergrenze, bis zu der es beim Warten langsam weitersteigt. */
+      setze(stand, bis = stand) { soll = Math.max(soll, stand); decke = Math.max(bis, soll); },
+      /** Füllt das Haus ganz und wartet kurz, damit das volle Haus zu sehen ist. */
+      async fertig() { if (!laeuft) return; soll = decke = 1; await new Promise((r) => setTimeout(r, 900)); },
+      stopp() { laeuft = false; cancelAnimationFrame(raf); },
+    };
+  })();
+
   let ctl = null;
   $("abbrechen").addEventListener("click", () => ctl?.abort());
   $("beispiel").addEventListener("click", () => { z = neuerZustand(MUSTER, true); zeige(); });
@@ -176,6 +258,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
     $("laden-titel").textContent = "Wir lesen Ihre Abrechnung";
     $("ergebnis").innerHTML = "";
     $("laden-text").textContent = "Seiten werden vorbereitet …";
+    haus.start();
     ctl = new AbortController();
     try {
       const limits = await sample.limits().catch(() => ({}));
@@ -183,6 +266,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       const seiten = await bereiteVor(dateien);
       if (!seiten.length) throw { code: "unlesbar" };
       await abschreiben(seiten, maxBilder);
+      haus.setze(0.5, 0.8);
       $("laden-titel").textContent = "Wir prüfen Ihre Abrechnung";
       $("laden-text").textContent = `Beträge werden zugeordnet und mit ${P.REGELN_ANZAHL} Regeln geprüft …`;
       const text = seiten.map((s, i) => `--- Seite ${i + 1} ---\n${s.text}`).join("\n\n");
@@ -209,6 +293,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       // Unterschritt 2: Die KI vergleicht das Zeilenprotokoll der Formelprüfung mit dem Dokument
       const protokoll = P.kontrollProtokoll(z.roh, HEUTE);
       if (protokoll) {
+        haus.setze(0.82, 0.96);
         $("laden-titel").textContent = "Zweite Kontrolle";
         $("laden-text").textContent = "Jede Zeile wird noch einmal mit Ihrem Dokument verglichen …";
         try {
@@ -226,6 +311,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
           z.kontrolle = P.werteKontrolle(null, z.roh, HEUTE);
         }
       }
+      await haus.fertig();
       zeige();
     } catch (e) {
       $("ergebnis").innerHTML = "";
@@ -244,6 +330,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       m.textContent = e?.code in texte ? texte[e.code] : `Das Lesen hat nicht geklappt. Bitte versuchen Sie es noch einmal. (Einzelheit: ${String(e?.code ?? e?.message ?? e).slice(0, 200)})`;
       if (!(e?.code in texte)) console.error(e);
     } finally {
+      haus.stopp();
       $("laden").hidden = true;
       $("pruefen").disabled = false;
     }
@@ -292,7 +379,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
     const gruppen = [];
     for (let i = 0; i < fehlend.length; i += maxBilder) gruppen.push(fehlend.slice(i, i + maxBilder));
     let fertig = 0;
-    const melde = () => fortschritt(`Seiten werden gelesen: ${fertig} von ${fehlend.length}`);
+    const melde = () => { fortschritt(`Seiten werden gelesen: ${fertig} von ${fehlend.length}`); if (art === "Nebenkostenabrechnung") haus.setze(0.1 + 0.38 * (fertig / fehlend.length), 0.1 + 0.38 * Math.min(1, (fertig + 1) / fehlend.length)); };
     melde();
     // höchstens zwei Gruppen gleichzeitig
     const lauf = async (g) => {
