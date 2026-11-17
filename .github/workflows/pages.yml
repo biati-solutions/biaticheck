@@ -2,6 +2,8 @@ name: Testseite auf GitHub Pages
 
 # Baut die Testseite aus apps/testseite und legt sie als index.html auf den Branch "biati-main-test".
 # GitHub Pages zeigt diesen Branch (Einstellungen → Pages → Branch: biati-main-test, Ordner: / (root)).
+# Die Hauptseite (index.html) ist immer der neueste Stand. Gespeicherte Versionen liegen in eigenen Ordnern
+# (z. B. BiatiCheck_v1/) und werden von diesem Ablauf nicht verändert.
 on:
   push:
     branches: [main]
@@ -38,14 +40,15 @@ jobs:
         run: |
           set -e
           stand=$(git rev-parse --short HEAD)
-          mkdir seite
+          # Bestehenden Branch holen, damit gespeicherte Versionen (Ordner wie BiatiCheck_v1) erhalten bleiben
+          ziel="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git clone -q --depth 1 --branch biati-main-test "$ziel" seite || { mkdir seite && git -C seite init -q -b biati-main-test; }
           cp apps/testseite/dist/biaticheck-test.html seite/index.html
           touch seite/.nojekyll
-          printf '# BiatiCheck – Testseite (GitHub Pages)\n\nDieser Branch enthält nur die fertig gebaute Testseite (`index.html`) für GitHub Pages.\nEr wird bei jedem Push auf `main` automatisch aus `apps/testseite` neu erzeugt. Bitte hier nichts von Hand ändern.\n\nHinweis: Außerhalb von claude.ai funktioniert nur „Beispiel ansehen“. Eigene Abrechnungen lassen sich nur über die Testseite bei Claude auslesen.\n' > seite/README.md
           cd seite
-          git init -q -b biati-main-test
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          git diff --cached --quiet && { echo "Keine Änderung an der Testseite"; exit 0; }
           git commit -q -m "Testseite für GitHub Pages (Stand $stand)"
-          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" biati-main-test
+          git push -q "$ziel" biati-main-test
