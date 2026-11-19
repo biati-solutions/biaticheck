@@ -1,0 +1,81 @@
+# BiatiCheck auf einem eigenen Server: App, PostgreSQL und Caddy (HTTPS).
+# Einrichtung Schritt für Schritt: docs/DEPLOYMENT.md
+#   cp deploy/.env.example .env    # Werte eintragen
+#   docker compose up -d --build
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: biaticheck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_DB: biaticheck
+    volumes:
+      - datenbank:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biaticheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Läuft bei jedem Start einmal und bringt die Datenbank auf den neuesten Stand.
+  migrieren:
+    build: { context: ., target: werkzeug }
+    image: biaticheck-werkzeug
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+    environment: &datenbank
+      DATABASE_URL: postgresql://biaticheck:${POSTGRES_PASSWORD}@db:5432/biaticheck
+    command: pnpm --filter @biaticheck/web db:migrate
+
+  app:
+    build: { context: ., target: app }
+    image: biaticheck-app
+    restart: unless-stopped
+    depends_on:
+      migrieren: { condition: service_completed_successfully }
+    environment:
+      <<: *datenbank
+      DATEI_SCHLUESSEL: ${DATEI_SCHLUESSEL:?DATEI_SCHLUESSEL in .env setzen}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FREIGABE_ERFORDERLICH: ${FREIGABE_ERFORDERLICH:-true}
+      UPLOADS_PRO_STUNDE: ${UPLOADS_PRO_STUNDE:-10}
+      ZAHLUNG_MODUS: ${ZAHLUNG_MODUS:-aus}
+      ERLAUBE_TESTZAHLUNG: ${ERLAUBE_TESTZAHLUNG:-false}
+    volumes:
+      - uploads:/daten/uploads
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN in .env setzen}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_daten:/data
+      - caddy_konfig:/config
+
+  # Nur auf Abruf: Experten-Konto anlegen, abgelaufene Fälle löschen.
+  #   docker compose run --rm werkzeug pnpm --filter @biaticheck/web experte:anlegen anna@biati.de "Anna Muster"
+  #   docker compose run --rm werkzeug pnpm --filter @biaticheck/web aufraeumen
+  werkzeug:
+    image: biaticheck-werkzeug
+    profiles: [werkzeug]
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      <<: *datenbank
+      DATEI_SCHLUESSEL: ${DATEI_SCHLUESSEL}
+      UPLOAD_DIR: /daten/uploads
+    volumes:
+      - uploads:/daten/uploads
+
+volumes:
+  datenbank:
+  uploads:
+  caddy_daten:
+  caddy_konfig:

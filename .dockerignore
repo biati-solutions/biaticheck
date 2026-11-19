@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/.daten
+**/dist
+**/test-results
+**/playwright-report
+**/vorschau
+.git
+.github
+videos
+apps/video
+apps/testseite
+docs
+deploy/.env
+**/.env
+**/.env.*
+!**/.env.example
