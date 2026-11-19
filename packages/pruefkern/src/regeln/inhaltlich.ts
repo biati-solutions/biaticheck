@@ -147,6 +147,26 @@ export const I04_Heizkosten: Regel = {
       });
     }
 
+    // Warmwasser ohne Zähler (Schätzung, Formel, Verdunster): 15 % der Warmwasserkosten dürfen gekürzt werden.
+    // Nicht zusätzlich, wenn schon die gesamten Heizkosten gekürzt werden.
+    const w = h.warmwasser;
+    if (w?.verbrauchErfasst === false && h.verbrauchErfasst !== false) {
+      const kuerzung = w.anteilMieter !== undefined && w.anteilMieter > 0 ? runde(w.anteilMieter * 0.15) : undefined;
+      befunde.push({
+        status: kuerzung !== undefined ? "abweichung" : "pruefbedarf",
+        titel: "Warmwasser nicht nach Verbrauch abgerechnet",
+        erklaerung:
+          "Ihr Warmwasserverbrauch wurde nicht mit einem Zähler erfasst, sondern geschätzt oder nach einer Formel berechnet. Dann dürfen Sie die Warmwasserkosten um 15 % kürzen." +
+          (kuerzung === undefined ? " Wie hoch Ihr Warmwasseranteil ist, geht aus den Unterlagen nicht hervor." : ""),
+        naechsterSchritt:
+          kuerzung !== undefined
+            ? `Kürzen Sie die Warmwasserkosten um 15 % (${euro(kuerzung)}) und teilen Sie dies dem Vermieter schriftlich mit.`
+            : "Lassen Sie sich Ihren Warmwasseranteil nennen und kürzen Sie ihn um 15 %.",
+        betragZugunstenMieter: kuerzung,
+        beleg: { warmwasser: true, anteilMieter: w.anteilMieter, kuerzung },
+      });
+    }
+
     const p = h.verbrauchsanteilProzent;
     if (p === undefined) {
       befunde.push({
@@ -177,6 +197,7 @@ export const I04_Heizkosten: Regel = {
 
 /** Ende der Übergangsfrist für die Umlage von Kabel-/Antennenkosten. */
 const KABEL_STICHTAG = "2024-07-01";
+const KABEL_AUSNAHME = /glasfaser|bereitstellungsentgelt|betriebsstrom/i;
 
 export const I05_KabelTV: Regel = {
   id: "I-05",
@@ -191,6 +212,15 @@ export const I05_KabelTV: Regel = {
     return a.kostenpositionen
       .filter((p) => p.kategorie === "antenne_kabel")
       .map((p): Befund => {
+        // Weiter zulässig: Betriebsstrom der Verteilanlage und das Glasfaserbereitstellungsentgelt (§ 72 TKG).
+        if (KABEL_AUSNAHME.test(p.bezeichnung)) {
+          return {
+            status: "ok",
+            titel: `Weiter umlagefähig: ${p.bezeichnung}`,
+            erklaerung: "Betriebsstrom der Anlage und ein Glasfaserbereitstellungsentgelt dürfen auch nach dem 30.06.2024 umgelegt werden.",
+            positionId: p.id,
+          };
+        }
         if (vergleiche(z.von, KABEL_STICHTAG) >= 0) {
           return {
             status: "abweichung",
@@ -965,6 +995,138 @@ export const I18_Sondernutzung: Regel = {
   },
 };
 
+/** Beginn der CO₂-Kostenaufteilung: Abrechnungszeiträume, die ab dem 01.01.2023 beginnen. */
+const CO2_STICHTAG = "2023-01-01";
+
+/**
+ * I-19 CO₂-Angaben fehlen: Weist die Heizkostenabrechnung die CO₂-Kosten und die Einstufung des Gebäudes nicht aus,
+ * darf der Mieter seinen Heizkostenanteil um 3 % kürzen. Belegt nur bei Gas und Heizöl; bei Fernwärme oder
+ * unbekanntem Energieträger Prüfbedarf ohne Betrag. Bei Strom und Holz gilt das Gesetz nicht.
+ */
+export const I19_CO2Angaben: Regel = {
+  id: "I-19",
+  version: "1.0.0",
+  titel: "CO₂-Kosten in der Heizkostenabrechnung ausgewiesen",
+  bereich: "inhaltlich",
+  grundlage: "§ 7 Abs. 3 und 4 CO2KostAufG",
+  stand: "entwurf",
+  pruefe(a) {
+    const h = a.heizkosten;
+    const z = a.meta.abrechnungszeitraum;
+    if (!h || !z || vergleiche(z.von, CO2_STICHTAG) < 0) return [];
+    if (h.co2 || h.co2Ausgewiesen !== false) return [];
+    if (h.brennstoff === "strom" || h.brennstoff === "holz") return [];
+    const kuerzung = runde(h.anteilMieter * 0.03);
+    if (h.brennstoff === "gas" || h.brennstoff === "heizoel") {
+      return [
+        {
+          status: "abweichung",
+          titel: "CO₂-Kosten nicht ausgewiesen",
+          erklaerung: "Die Heizkostenabrechnung nennt weder die CO₂-Kosten noch die Einstufung des Gebäudes. Seit 2023 muss der Vermieter beides ausweisen und einen Teil der CO₂-Kosten selbst tragen. Fehlen die Angaben, dürfen Sie Ihren Heizkostenanteil um 3 % kürzen.",
+          naechsterSchritt: `Kürzen Sie die Heizkosten um 3 % (${euro(kuerzung)}) und verlangen Sie die fehlenden CO₂-Angaben.`,
+          betragZugunstenMieter: kuerzung > 0 ? kuerzung : undefined,
+          beleg: { anteilMieter: h.anteilMieter, kuerzung, brennstoff: h.brennstoff },
+        },
+      ];
+    }
+    return [
+      {
+        status: "pruefbedarf",
+        titel: "CO₂-Kosten nicht ausgewiesen",
+        erklaerung: "Die Heizkostenabrechnung nennt weder die CO₂-Kosten noch die Einstufung des Gebäudes. Bei Heizungen mit Gas, Öl und meist auch Fernwärme muss der Vermieter beides ausweisen. Fehlen die Angaben, kommt eine Kürzung Ihres Heizkostenanteils um 3 % in Betracht.",
+        naechsterSchritt: "Fragen Sie nach dem Energieträger der Heizung und verlangen Sie die CO₂-Angaben.",
+        betroffen: h.anteilMieter,
+        beleg: { anteilMieter: h.anteilMieter, brennstoff: h.brennstoff },
+      },
+    ];
+  },
+};
+
+const RAUCHMELDER = /rauch(warn)?melder|rwm\b/i;
+/** Eindeutig keine laufenden Kosten. */
+const EINMALIG_SICHER = /anschaffung|neuanschaffung|erstbepflanzung|neuanlage|neuanpflanzung|leuchtmittel|glühbirne|glühlampe|feuerlöscher.*(kauf|miet|leasing)|(kauf|miet|leasing).*feuerlöscher/i;
+/** Deutet auf einen einmaligen Anlass hin – nur mit Beleg zu klären. */
+const EINMALIG_MOEGLICH = /einmalig|sonderreinigung|baureinigung|verstopfung|rohrspülung|entrümpelung|graffiti|baumfäll/i;
+
+/**
+ * I-20 Einmalige Kosten und Anschaffungen sind keine Betriebskosten: Betriebskosten fallen laufend an.
+ * Eindeutige Bezeichnungen (Anschaffung, Erstbepflanzung, Leuchtmittel) sind ein belegter Fehler,
+ * Hinweise auf einen einmaligen Anlass Prüfbedarf ohne Betrag. Verneinungen werden beachtet.
+ */
+export const I20_EinmaligeKosten: Regel = {
+  id: "I-20",
+  version: "1.0.0",
+  titel: "Keine einmaligen Kosten und Anschaffungen",
+  bereich: "inhaltlich",
+  grundlage: "§ 556 Abs. 1 BGB; § 1 Abs. 1 BetrKV (laufende Kosten)",
+  stand: "entwurf",
+  pruefe(a) {
+    return a.kostenpositionen
+      .filter((p) => !NICHT_UMLAGEFAEHIG.includes(p.kategorie) && !RAUCHMELDER.test(p.bezeichnung))
+      .flatMap((p): Befund[] => {
+        const genannt = (muster: RegExp) => findeAussagen([p.bezeichnung], muster).some((x) => !x.verneint);
+        if (genannt(EINMALIG_SICHER)) {
+          return [
+            {
+              status: "abweichung",
+              titel: `Keine laufenden Kosten: ${p.bezeichnung}`,
+              erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) sind Kosten für eine Anschaffung oder einmalige Maßnahme. Umgelegt werden dürfen nur Kosten, die laufend anfallen.`,
+              naechsterSchritt: `Fordern Sie die Streichung dieser Position (${euro(p.anteilMieter)}).`,
+              betragZugunstenMieter: p.anteilMieter,
+              positionId: p.id,
+            },
+          ];
+        }
+        if (genannt(EINMALIG_MOEGLICH)) {
+          return [
+            {
+              status: "pruefbedarf",
+              titel: `Einmalige Kosten? ${p.bezeichnung}`,
+              erklaerung: `„${p.bezeichnung}“ klingt nach einem einmaligen Anlass. Umgelegt werden dürfen nur Kosten, die regelmäßig anfallen – eine Reinigung nach einer Verstopfung etwa nicht, eine turnusmäßige Reinigung schon.`,
+              naechsterSchritt: "Lassen Sie sich die Rechnung zeigen und fragen Sie, ob die Leistung regelmäßig anfällt.",
+              betroffen: p.anteilMieter,
+              positionId: p.id,
+              unterlagen: ["rechnungen"],
+            },
+          ];
+        }
+        return [];
+      });
+  },
+};
+
+/**
+ * I-21 Kostenart im Mietvertrag vereinbart: Betriebskosten trägt der Mieter nur, soweit der Mietvertrag sie auf ihn
+ * umlegt. Verweist der Vertrag auf die Betriebskostenverordnung, sind alle Kostenarten des § 2 Nr. 1–16 vereinbart;
+ * zählt er einzelne auf, gelten nur diese. Nicht umlagefähige Kosten meldet I-01, sonstige Betriebskosten I-02,
+ * Heizkosten folgen der HeizkostenV.
+ */
+export const I21_KostenartVereinbart: Regel = {
+  id: "I-21",
+  version: "1.0.0",
+  titel: "Kostenarten im Mietvertrag vereinbart",
+  bereich: "inhaltlich",
+  grundlage: "§ 556 Abs. 1 BGB",
+  stand: "entwurf",
+  pruefe(a) {
+    const vereinbart = a.mietvertrag?.umgelegteKostenarten;
+    if (vereinbart === undefined) return [];
+    const zuPruefen = a.kostenpositionen.filter((p) => !NICHT_UMLAGEFAEHIG.includes(p.kategorie) && !["sonstige", "unbekannt", "heizung", "warmwasser", "verbundene_anlagen"].includes(p.kategorie));
+    if (zuPruefen.length === 0) return [];
+    const fehlt = vereinbart === "alle" ? [] : zuPruefen.filter((p) => !vereinbart.includes(p.kategorie));
+    if (fehlt.length === 0) return [{ status: "ok", titel: "Kostenarten vereinbart", erklaerung: "Alle abgerechneten Kostenarten sind im Mietvertrag auf Sie umgelegt." }];
+    return fehlt.map((p) => ({
+      status: "abweichung" as const,
+      titel: `Nicht im Mietvertrag: ${p.bezeichnung}`,
+      erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) gehört zur Kostenart „${KOSTENKATEGORIEN[p.kategorie].replace(/^§ 2 Nr\. \d+ – /, "")}“. Ihr Mietvertrag legt diese Kostenart nicht auf Sie um. Abgerechnet werden darf nur, was vereinbart ist.`,
+      naechsterSchritt: `Fordern Sie die Streichung dieser Position (${euro(p.anteilMieter)}).`,
+      betragZugunstenMieter: p.anteilMieter,
+      positionId: p.id,
+      beleg: { kategorie: p.kategorie, vereinbart },
+    }));
+  },
+};
+
 export const INHALTLICHE_REGELN = [
   I01_NichtUmlagefaehig,
   I02_SonstigeKosten,
@@ -984,4 +1146,7 @@ export const INHALTLICHE_REGELN = [
   I16_Doppelberechnung,
   I17_Versicherungen,
   I18_Sondernutzung,
+  I19_CO2Angaben,
+  I20_EinmaligeKosten,
+  I21_KostenartVereinbart,
 ];

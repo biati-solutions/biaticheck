@@ -38,16 +38,19 @@ const f = (id: string, name: string, formel: string, ergebnis: Fehlerart["ergebn
 export const FEHLERKATALOG: readonly Fehlerart[] = [
   // ---------- Formell ----------
   f("F-01.a", "Abrechnungszeitraum länger als 12 Monate", "bis ≥ von + 12 Monate", "abweichung", "keiner", "Abrechnungszeitraum"),
+  f("F-01.b", "Abrechnung vor Ende des Zeitraums erstellt", "Datum der Abrechnung < Ende des Abrechnungszeitraums", "auffaelligkeit", "keiner", "Abrechnungszeitraum, Datum der Abrechnung"),
   f("F-02.a", "Abrechnung verspätet, Zeitraum bestätigt", "Zugang > Zeitraumende + 12 Monate und Saldo > 0 und Zeitraum bestätigt → Betrag = Saldo", "abweichung", "exakt", "Zeitraum, Zugangsdatum, Saldo, Vorjahresabrechnung"),
   f("F-02.b", "Abrechnung möglicherweise verspätet", "Zugang > Zeitraumende + 12 Monate und Saldo > 0, Zeitraum noch nicht bestätigt → möglicher Betrag = Saldo", "pruefbedarf", "bis_zu", "Zeitraum, Zugangsdatum, Saldo"),
   f("F-02.c", "Abrechnung verspätet bei Guthaben", "Zugang > Zeitraumende + 12 Monate und Saldo ≤ 0", "auffaelligkeit", "keiner", "Zeitraum, Zugangsdatum, Saldo"),
   f("F-03.a", "Einwendungsfrist abgelaufen", "heute > Zugang + 12 Monate", "auffaelligkeit", "keiner", "Zugangsdatum"),
   f("F-04.a", "Gesamtkosten einer Position fehlen", "Position ohne Gesamtkosten (außer direkt zugeordnet)", "auffaelligkeit", "keiner", "Kostenpositionen"),
   f("F-04.b", "Umlageschlüssel einer Position fehlt", "Position ohne Umlageschlüssel", "auffaelligkeit", "keiner", "Kostenpositionen"),
+  f("F-04.c", "Werte des Umlageschlüssels fehlen", "Position mit Umlageschlüssel, aber ohne Gesamtmenge oder eigenen Anteil (außer direkt zugeordnet)", "auffaelligkeit", "keiner", "Kostenpositionen"),
   f("F-05.a", "Abrechnung trotz Pauschale", "Pauschale vereinbart → Betrag = Saldo, falls Saldo > 0", "abweichung", "exakt", "Mietvertrag, Saldo"),
 
   // ---------- Rechnerisch ----------
   f("R-01.a", "Anteil einer Position falsch berechnet", "Betrag = Anteil − Gesamtkosten × AnteilEinheit / AnteilGesamt × Zeitanteil, falls |Betrag| > 0,05 €", "abweichung", "exakt", "Gesamtkosten, Umlageschlüssel, Anteil"),
+  f("R-01.b", "Anteil einer Verbrauchsposition nicht nachvollziehbar", "Schlüssel = Verbrauch und Anteil − Gesamtkosten × eigener Verbrauch / Gesamtverbrauch > 0,05 € → möglicher Betrag = Differenz (ein Grundpreis kann die Abweichung erklären)", "auffaelligkeit", "bis_zu", "Gesamtkosten, Verbrauchswerte, Anteil"),
   f("R-02.a", "Gesamtsumme falsch addiert", "Betrag = ausgewiesene Summe − (Σ Anteile der Positionen + Heizkostenanteil), falls |Betrag| > 0,05 €", "abweichung", "exakt", "Positionen, ausgewiesene Summe"),
   f("R-03.a", "Saldo falsch berechnet", "Betrag = ausgewiesener Saldo − (Summe − Vorauszahlungen), falls |Betrag| > 0,05 €", "abweichung", "exakt", "Summe, Vorauszahlungen, Saldo"),
   f("R-04.a", "Falscher Flächennenner bei Heizkosten", "Nenner ≠ Gesamtfläche und Abrechnung nennt dieselbe beheizte Gesamtfläche → Betrag = Anteil − Gesamtkosten × AnteilEinheit / Gesamtfläche", "abweichung", "exakt", "Gesamtfläche, beheizte Gesamtfläche, Position"),
@@ -67,6 +70,11 @@ export const FEHLERKATALOG: readonly Fehlerart[] = [
   f("R-09.b", "Mehr übernommen als im Beleg (z. B. Umsatzsteuer doppelt)", "übernommener Betrag − Betrag laut Beleg > 0,05 € → Betrag = Differenz × Anteil / Gesamtkosten der Position", "abweichung", "exakt", "Beleg und übernommener Betrag"),
   f("R-09.c", "Gutschrift nicht abgezogen", "Σ Rechnungen = abgerechnete Gesamtkosten (Gutschrift fehlt) → Betrag = Gutschrift × Anteil / Gesamtkosten", "abweichung", "exakt", "Rechnungen und Gutschrift"),
 
+  f("R-10.a", "Keine Zwischenablesung bei Ein- oder Auszug", "Mietzeit kürzer als der Abrechnungszeitraum, Verbrauchskosten abgerechnet und Zähler zum Wechsel nicht abgelesen", "auffaelligkeit", "keiner", "Mietbeginn/-ende, Angabe zur Zwischenablesung"),
+  f("R-11.a", "Gesamtfläche kleiner als im Vorjahr", "(Gesamtfläche Vorjahr − Gesamtfläche) / Gesamtfläche Vorjahr > 1 % → möglicher Betrag = Kosten nach Fläche × (1 − Gesamtfläche / Gesamtfläche Vorjahr)", "auffaelligkeit", "bis_zu", "Flächen der Vorjahresabrechnung"),
+  f("R-11.b", "Wohnfläche größer als im Vorjahr", "(Wohnfläche − Wohnfläche Vorjahr) / Wohnfläche Vorjahr > 1 % → möglicher Betrag = Kosten nach Fläche × (1 − Wohnfläche Vorjahr / Wohnfläche)", "auffaelligkeit", "bis_zu", "Flächen der Vorjahresabrechnung"),
+  f("R-12.a", "Anderer Verteilerschlüssel als im Mietvertrag", "Schlüssel einer kalten Position ≠ vereinbarter Schlüssel (ohne Vereinbarung: Wohnfläche); Verbrauch, direkte Zuordnung und Heizung ausgenommen", "auffaelligkeit", "keiner", "Mietvertrag (Verteilerschlüssel)"),
+
   // ---------- Inhaltlich ----------
   f("I-01.a", "Verwaltungskosten umgelegt", "Kategorie = Verwaltung → Betrag = Anteil", "abweichung", "exakt", "Kostenpositionen"),
   f("I-01.b", "Reparaturen/Instandhaltung umgelegt", "Kategorie = Instandhaltung → Betrag = Anteil", "abweichung", "exakt", "Kostenpositionen"),
@@ -75,6 +83,8 @@ export const FEHLERKATALOG: readonly Fehlerart[] = [
   f("I-02.a", "Sonstige Betriebskosten nicht vereinbart", "Kategorie = Sonstige und Bezeichnung nicht im Mietvertrag → Betrag = Anteil", "abweichung", "exakt", "Mietvertrag"),
   f("I-03.a", "Position keiner Kostenart zuordenbar", "Kategorie = unbekannt", "auffaelligkeit", "keiner", "Kostenpositionen"),
   f("I-04.a", "Heizung nicht nach Verbrauch abgerechnet", "Verbrauch nicht erfasst → Betrag = Heizkostenanteil × 15 %", "abweichung", "exakt", "Heizkostenabrechnung"),
+  f("I-04.c", "Warmwasser nicht nach Verbrauch abgerechnet", "Warmwasserverbrauch nicht erfasst (Heizung erfasst) → Betrag = Warmwasseranteil × 15 %", "abweichung", "exakt", "Heizkostenabrechnung mit Warmwasseranteil"),
+  f("I-04.d", "Warmwasser nicht nach Verbrauch, Anteil unbekannt", "Warmwasserverbrauch nicht erfasst, Warmwasseranteil der Wohnung nicht ausgewiesen", "pruefbedarf", "keiner", "Heizkostenabrechnung"),
   f("I-04.b", "Verbrauchsanteil außerhalb 50–70 %", "Verbrauchsanteil < 50 % oder > 70 %", "auffaelligkeit", "keiner", "Heizkostenabrechnung"),
   f("I-05.a", "Kabelkosten nach dem 30.06.2024", "Zeitraumbeginn ≥ 01.07.2024 → Betrag = Anteil", "abweichung", "exakt", "Zeitraum, Kabelposition"),
   f("I-05.b", "Kabelkosten über den 30.06.2024 hinaus", "möglicher Betrag = Anteil × Tage ab 01.07.2024 / Tage des Zeitraums", "auffaelligkeit", "bis_zu", "Zeitraum, Kabelposition"),
@@ -105,6 +115,12 @@ export const FEHLERKATALOG: readonly Fehlerart[] = [
   f("I-18.a", "Kosten einer fremden Privatfläche auf alle verteilt", "allgemein verteilte Position enthält ausgewiesene Kosten einer allein genutzten Fläche (nicht der eigenen) → Betrag = Anteil × Teilbetrag / Gesamtkosten", "abweichung", "exakt", "Aufschlüsselung oder Erläuterung mit Betrag"),
   f("I-18.b", "Direkt berechnete Sonderleistung ohne Vertragsanlage", "Position direkt zugeordnet und Abrechnung verweist auf eine fehlende Anlage oder Vereinbarung → Prüfbedarf, Unterlage anfordern", "pruefbedarf", "keiner", "Vertragsanlage"),
 
+  f("I-19.a", "CO₂-Angaben fehlen (Gas oder Heizöl)", "Zeitraumbeginn ≥ 01.01.2023, Energieträger Gas/Heizöl, CO₂-Kosten und Einstufung nicht ausgewiesen → Betrag = Heizkostenanteil × 3 %", "abweichung", "exakt", "Heizkostenabrechnung, Energieträger"),
+  f("I-19.b", "CO₂-Angaben fehlen, Energieträger unklar", "Zeitraumbeginn ≥ 01.01.2023, CO₂-Angaben fehlen, Energieträger Fernwärme oder unbekannt", "pruefbedarf", "keiner", "Heizkostenabrechnung"),
+  f("I-20.a", "Anschaffung oder einmalige Maßnahme umgelegt", "Bezeichnung nennt Anschaffung, Erstbepflanzung, Leuchtmittel o. Ä. (nicht verneint) → Betrag = Anteil", "abweichung", "exakt", "Bezeichnung"),
+  f("I-20.b", "Hinweis auf einmaligen Anlass", "Bezeichnung nennt einmalig, Verstopfung, Sonderreinigung, Entrümpelung o. Ä. (nicht verneint)", "pruefbedarf", "keiner", "Bezeichnung"),
+  f("I-21.a", "Kostenart nicht im Mietvertrag vereinbart", "Mietvertrag zählt Kostenarten auf und Kostenart der Position fehlt → Betrag = Anteil (ohne Heizkosten, Sonstige, nicht umlagefähige Kosten)", "abweichung", "exakt", "Mietvertrag (umgelegte Kostenarten)"),
+
   // ---------- KI-Kontrolle ----------
   f("K-01.a", "Unstimmigkeit, die nur die KI-Kontrolle im Dokument findet", "KI meldet eine Auffälligkeit mit wörtlicher Textstelle, die keine Formel erfasst → begründeter Prüfbedarf", "auffaelligkeit", "keiner", "KI-Kontrolle mit Textstelle"),
 
@@ -123,7 +139,7 @@ export const NICHT_BERECHENBAR: readonly string[] = [
   "Gesamtkosten stimmen nicht mit den Rechnungen überein (nur durch Belegeinsicht prüfbar)",
   "Leistungen wurden abgerechnet, aber nicht erbracht",
   "Kosten sind unwirtschaftlich hoch (Vergleichswerte sind nur ein Hinweis)",
-  "Verteilerschlüssel weicht vom Mietvertrag ab, wenn der Mietvertrag nicht vorliegt",
+  "Verteilerschlüssel oder Kostenarten weichen vom Mietvertrag ab, wenn der Mietvertrag nicht vorliegt",
   "Wohn- oder Gesamtfläche ist tatsächlich falsch vermessen",
   "Zählerstände oder Verbrauchswerte wurden falsch abgelesen",
   "Kosten gehören in ein anderes Abrechnungsjahr",

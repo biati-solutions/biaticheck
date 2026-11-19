@@ -15,6 +15,8 @@ describe("Vorauszahlungen aus nachgereichten Unterlagen", () => {
           { ab: "2024-07-01", betriebskosten: -5, heizkosten: 0 },
         ],
         abrechnungszeitraum: { von: "2023-01-01", bis: "2023-12-31" },
+        wohnflaecheMieter: 84.28,
+        gesamtflaeche: 0,
         hinweis: "",
       }),
     ).toEqual({
@@ -24,6 +26,8 @@ describe("Vorauszahlungen aus nachgereichten Unterlagen", () => {
         { ab: "2024-03-01", betriebskosten: 150, heizkosten: 110 },
       ],
       abrechnungszeitraum: { von: "2023-01-01", bis: "2023-12-31" },
+      // ungültige Fläche (0) wird verworfen
+      flaechen: { wohnflaecheMieter: 84.28 },
       hinweis: "",
     });
   });

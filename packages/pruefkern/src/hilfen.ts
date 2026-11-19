@@ -40,6 +40,13 @@ export function plusMonate(iso: string, monate: number): string {
   return format(ziel);
 }
 
+/** Addiert Kalendertage. */
+export function plusTage(iso: string, tage: number): string {
+  const d = parse(iso);
+  d.setUTCDate(d.getUTCDate() + tage);
+  return format(d);
+}
+
 /** Länge eines Zeitraums in ganzen Tagen, beide Grenzen eingeschlossen. */
 export function tageInklusive(von: string, bis: string): number {
   return Math.round((parse(bis).getTime() - parse(von).getTime()) / 86_400_000) + 1;

@@ -117,6 +117,9 @@ export function wandleUm(roh: Rohdaten): Umwandlung {
           gesamtkosten: wert(h.gesamtkosten),
           verbrauchsanteilProzent: verbrauchsanteilGueltig ? verbrauchsanteilRoh : undefined,
           verbrauchErfasst: wert(h.verbrauchErfasst),
+          brennstoff: wert(h.brennstoff),
+          // CO₂-Angaben gelten als ausgewiesen, sobald CO₂-Werte gelesen wurden – auch wenn das Feld anders gesetzt ist.
+          co2Ausgewiesen: co2Vollstaendig || h.co2KostenGesamt !== null || h.co2EmissionKg !== null ? true : wert(h.co2Ausgewiesen),
           anteilMieter: h.anteilMieter,
           inKostenpositionenEnthalten: false,
           verbrauchMieter: h.verbrauchMieter !== null && h.verbrauchMieter >= 0 ? h.verbrauchMieter : undefined,
@@ -124,8 +127,10 @@ export function wandleUm(roh: Rohdaten): Umwandlung {
           flaecheMieter: positiv(h.flaecheMieter),
           gesamtflaeche: positiv(h.gesamtflaeche),
           warmwasser:
-            h.warmwasserKostenGesamt !== null || h.warmwasserVerbrauchM3 !== null
+            h.warmwasserKostenGesamt !== null || h.warmwasserVerbrauchM3 !== null || h.warmwasserVerbrauchErfasst !== null || h.warmwasserAnteilMieter !== null
               ? {
+                  anteilMieter: positiv(h.warmwasserAnteilMieter),
+                  verbrauchErfasst: wert(h.warmwasserVerbrauchErfasst),
                   kostenGesamt: wert(h.warmwasserKostenGesamt),
                   verbrauchGesamtM3: positiv(h.warmwasserVerbrauchM3),
                   energieKwh: positiv(h.warmwasserEnergieKwh),

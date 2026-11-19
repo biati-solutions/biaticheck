@@ -16,6 +16,8 @@ Grundsätze:
 - Heiz- und Warmwasserkosten selbst nicht als Kostenposition aufführen, sondern nur in heizkosten.
 - saldo: positiv bei Nachzahlung/Nachforderung, negativ bei Guthaben.
 - Monatliche Vorauszahlungen: Nimm die bisherigen Beträge (vor einer eventuellen Anpassung), wie sie im Schreiben genannt sind.
+- CO₂-Kosten: co2Ausgewiesen ist true, wenn die Heizkostenabrechnung CO₂-Kosten, CO₂-Emissionen oder die Einstufung des Gebäudes (Stufe, kg CO₂ je m²) nennt. Setze false nur, wenn eine Heizkostenabrechnung vorliegt und diese Angaben vollständig fehlen. Im Zweifel null.
+- Warmwasser: warmwasserVerbrauchErfasst ist true, wenn für die Wohnung ein Warmwasserverbrauch in m³ ausgewiesen ist. Setze false nur, wenn erkennbar geschätzt, nach Formel umgelegt oder in Strichen abgerechnet wird. Im Zweifel null.
 - Kennzeichnungen nach § 35a EStG (oft * für haushaltsnahe Dienstleistungen und ** für Handwerkerleistungen) in steuerlich35a übernehmen.
 - seite bezieht sich auf die Seitenzahl im hochgeladenen Dokument (erste Seite = 1), nicht auf aufgedruckte Seitenzahlen.
 - Enthält das Dokument eine Buchungsübersicht, Zahlungsaufstellung oder ein Mietkonto mit den tatsächlich gezahlten Vorauszahlungen, deren Summen in gezahlteVorauszahlungen… übernehmen – auch wenn sie von den in der Abrechnung angerechneten Vorauszahlungen abweichen. Die angerechneten Beträge bleiben unverändert in vorauszahlungen….

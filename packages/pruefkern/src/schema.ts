@@ -112,6 +112,13 @@ export const Heizkosten = z.object({
   verbrauchsanteilProzent: z.number().min(0).max(100).optional(),
   /** Wurde der Verbrauch der Wohnung tatsächlich erfasst (Zähler/Heizkostenverteiler)? */
   verbrauchErfasst: z.boolean().optional(),
+  /** Energieträger der Heizung – bestimmt, ob das CO2KostAufG sicher gilt. */
+  brennstoff: z.enum(["gas", "heizoel", "fernwaerme", "strom", "holz", "sonstig"]).optional(),
+  /**
+   * Weist die Heizkostenabrechnung die CO₂-Kosten und die Einstufung des Gebäudes aus?
+   * false = Angaben fehlen (Kürzungsrecht nach § 7 Abs. 4 CO2KostAufG).
+   */
+  co2Ausgewiesen: z.boolean().optional(),
   /** Auf die Wohnung entfallende Heizkosten laut (Heizkosten-)Abrechnung. */
   anteilMieter: betrag,
   /** Ist der Heizkostenanteil bereits als Kostenposition in `kostenpositionen` enthalten? */
@@ -130,6 +137,10 @@ export const Heizkosten = z.object({
       verbrauchGesamtM3: z.number().positive().optional(),
       /** Für Warmwasser aufgewendete Wärmemenge in kWh. */
       energieKwh: z.number().positive().optional(),
+      /** Auf die Wohnung entfallende Warmwasserkosten (Teil von heizkosten.anteilMieter). */
+      anteilMieter: betrag.optional(),
+      /** Wurde der Warmwasserverbrauch der Wohnung mit einem Zähler erfasst (m³)? false = geschätzt oder nach Formel. */
+      verbrauchErfasst: z.boolean().optional(),
     })
     .optional(),
   /** Angaben zur Aufteilung der CO₂-Kosten nach CO2KostAufG. */
@@ -168,6 +179,10 @@ export const Abrechnung = z.object({
      * Erst dann gilt eine versäumte Abrechnungsfrist als sicher.
      */
     zeitraumBestaetigt: z.boolean().optional(),
+    /** Bei Ein- oder Auszug: Wurden die Zähler zum Wechsel abgelesen (Zwischenablesung)? */
+    zwischenablesung: z.boolean().optional(),
+    /** Hat der Kunde die Nachzahlung schon geleistet? Steuert Zahlungshinweis und Schreiben (Rückforderung). */
+    nachzahlungGezahlt: z.boolean().optional(),
   }),
   flaechen: z
     .object({
@@ -268,9 +283,12 @@ export const Abrechnung = z.object({
   /** Vorjahreswerte für den Vergleich (aus früherer Abrechnung des Kunden). */
   vorjahr: z
     .object({
-      kostenpositionen: z.array(
-        z.object({ kategorie: Kostenkategorie, bezeichnung: z.string().optional(), anteilMieter: betrag }),
-      ),
+      /** Leer, wenn aus dem Vorjahr nur die Flächen bekannt sind. */
+      kostenpositionen: z.array(z.object({ kategorie: Kostenkategorie, bezeichnung: z.string().optional(), anteilMieter: betrag })),
+      /** Flächen laut Vorjahresabrechnung – für den Abgleich mit der aktuellen Abrechnung (R-11). */
+      flaechen: z
+        .object({ wohnflaecheMieter: z.number().positive().optional(), gesamtflaeche: z.number().positive().optional() })
+        .optional(),
     })
     .optional(),
   /** Ausstattung der Wohnung, soweit bekannt (Rückfragen an den Kunden). */
@@ -296,6 +314,17 @@ export const Abrechnung = z.object({
       mietende: datum.optional(),
       /** Wohnfläche laut Mietvertrag in m². */
       wohnflaeche: z.number().positive().optional(),
+      /**
+       * Welche Betriebskostenarten der Mietvertrag auf den Mieter umlegt: "alle" = Verweis auf die
+       * Betriebskostenverordnung bzw. alle Kostenarten des § 2 Nr. 1–16 BetrKV, sonst die Liste der ausdrücklich
+       * genannten Kostenarten (leer = keine Umlage vereinbart). „Sonstige“ (Nr. 17) prüft I-02 getrennt.
+       */
+      umgelegteKostenarten: z.union([z.literal("alle"), z.array(Kostenkategorie)]).optional(),
+      /**
+       * Im Mietvertrag vereinbarter Verteilerschlüssel für die kalten Betriebskosten.
+       * "keine" = nichts vereinbart, dann gilt die Wohnfläche (§ 556a Abs. 1 BGB).
+       */
+      umlageschluessel: z.enum(["wohnflaeche", "personen", "einheiten", "miteigentumsanteil", "keine"]).optional(),
     })
     .optional(),
 });

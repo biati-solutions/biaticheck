@@ -5,10 +5,11 @@ import { wandleUm } from "../../packages/auslesen/src/umwandlung";
 import { pruefeKonsistenz } from "../../packages/auslesen/src/konsistenz";
 import { bereinigeRohdaten } from "../../packages/auslesen/src/bereinigen";
 import { KEINE_KONTROLLE, KONTROLL_PROMPT, KontrolleRoh, kontrollbefundeAus, protokollFuerKontrolle, werteKontrolleAus } from "../../packages/auslesen/src/kontrolle";
-import { erstelleZeilenprotokoll, ALLE_REGELN, schliesstAn, erstelleStufe1, erstelleStufe2, pruefeAbrechnung, wendeAntwortAn, AntwortFehler, personalisiereAnschreiben } from "../../packages/pruefkern/src/index";
+import { BELEG_PRUEFLISTE, KOSTENKATEGORIEN, type Kostenkategorie, erstelleZeilenprotokoll, schliesstAn, erstelleStufe1, erstelleStufe2, pruefeAbrechnung, wendeAntwortAn, AntwortFehler, personalisiereAnschreiben } from "../../packages/pruefkern/src/index";
 
-export { personalisiereAnschreiben, schliesstAn };
-export const REGELN_ANZAHL = ALLE_REGELN.length;
+export { personalisiereAnschreiben, schliesstAn, BELEG_PRUEFLISTE };
+/** Schlüssel der Kostenarten – für die Auswertung des Mietvertrags (welche Kostenarten sind umgelegt?). */
+export const KOSTENARTEN: Record<string, string> = KOSTENKATEGORIEN;
 export const ANWEISUNG = SYSTEM_PROMPT;
 export const SCHEMA = JSON.stringify(z.toJSONSchema(Rohdaten));
 export const KONTROLL_ANWEISUNG = KONTROLL_PROMPT;
@@ -49,9 +50,21 @@ export function werteAus(
   rohJson: unknown,
   heute: string,
   antworten: Record<string, unknown> = {},
-  mietvertrag?: { pauschaleVereinbart?: boolean; vereinbarteSonstigeKosten?: string[]; aufzugAusgenommen?: boolean; mietbeginn?: string; mietende?: string; wohnflaeche?: number; gewerbeImHaus?: boolean },
+  mietvertrag?: {
+    pauschaleVereinbart?: boolean;
+    vereinbarteSonstigeKosten?: string[];
+    aufzugAusgenommen?: boolean;
+    mietbeginn?: string;
+    mietende?: string;
+    wohnflaeche?: number;
+    gewerbeImHaus?: boolean;
+    umgelegteKostenarten?: "alle" | Kostenkategorie[];
+    umlageschluessel?: "wohnflaeche" | "personen" | "einheiten" | "miteigentumsanteil" | "keine";
+  },
   vorauszahlungen?: { verlauf: Verlauf; quelle: "vorjahresabrechnung" | "kontoauszug" | "kunde" },
   kontrollbefunde?: { beschreibung: string; textstelle: string; positionId?: string; seite?: number }[],
+  /** Flächen aus der Vorjahresabrechnung, nur wenn deren Zeitraum lückenlos anschließt (Regel R-11). */
+  vorjahrFlaechen?: { wohnflaecheMieter?: number; gesamtflaeche?: number },
 ) {
   const bereinigt = bereinigeRohdaten(rohJson);
   const roh = Rohdaten.safeParse(bereinigt.roh);
@@ -72,6 +85,8 @@ export function werteAus(
     abrechnung = { ...abrechnung, mietvertrag: { ...abrechnung.mietvertrag, ...vertrag } };
     if (gewerbeImHaus) abrechnung = { ...abrechnung, ausstattung: { ...abrechnung.ausstattung, gewerbeImHaus } };
   }
+  if (vorjahrFlaechen && Object.keys(vorjahrFlaechen).length)
+    abrechnung = { ...abrechnung, vorjahr: { kostenpositionen: abrechnung.vorjahr?.kostenpositionen ?? [], flaechen: vorjahrFlaechen } };
   if (vorauszahlungen?.verlauf.length)
     abrechnung = { ...abrechnung, vorauszahlungenDetail: { ...abrechnung.vorauszahlungenDetail, verlauf: vorauszahlungen.verlauf, verlaufQuelle: vorauszahlungen.quelle } };
   for (const [feld, wert] of Object.entries(antworten)) {

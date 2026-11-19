@@ -10,7 +10,8 @@ export const P01_Vorjahresvergleich: Regel = {
   grundlage: "Wirtschaftlichkeitsgebot, § 556 Abs. 3 Satz 1 Hs. 2 BGB",
   stand: "entwurf",
   pruefe(a, { einstellungen }) {
-    if (!a.vorjahr) {
+    // Liegen aus dem Vorjahr nur Flächen vor (keine Kostenpositionen), gilt das Vorjahr hier als nicht vorhanden.
+    if (!a.vorjahr || a.vorjahr.kostenpositionen.length === 0) {
       return [
         {
           status: "nicht_pruefbar",

@@ -1,0 +1,10 @@
+# Caddy holt und erneuert das HTTPS-Zertifikat für die Domain automatisch.
+# Voraussetzung: Der DNS-Eintrag der Domain zeigt auf diesen Server, Ports 80 und 443 sind offen.
+{$DOMAIN} {
+	encode zstd gzip
+	# Uploads bis 20 MB (Grenze der App) plus Formularrand
+	request_body {
+		max_size 25MB
+	}
+	reverse_proxy app:3000
+}

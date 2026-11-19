@@ -3,20 +3,23 @@
 Automatisch erzeugt aus `packages/pruefkern/src/fehlerkatalog.ts`. Nicht von Hand ändern:
 `UPDATE_FORMELKATALOG=1 pnpm --filter @biaticheck/pruefkern test`.
 
-Der Prüfkern erkennt 64 Fehlerarten in 36 Regeln allein durch Formeln. Die KI liest nur die Werte aus dem Dokument.
-Nachweis: `packages/pruefkern/test/fehlerkatalog.test.ts` baut jede Fehlerart in 25 Zufallsvarianten ein (1600 Fälle) und prüft 300 korrekte Abrechnungen auf Fehlalarme.
+Der Prüfkern erkennt 78 Fehlerarten in 42 Regeln allein durch Formeln. Die KI liest nur die Werte aus dem Dokument.
+Nachweis: `packages/pruefkern/test/fehlerkatalog.test.ts` baut jede Fehlerart in 25 Zufallsvarianten ein (1950 Fälle) und prüft 300 korrekte Abrechnungen auf Fehlalarme.
 
 | ID | Fehlerart | Formel | Ergebnis | Betrag | Braucht |
 |---|---|---|---|---|---|
 | F-01.a | Abrechnungszeitraum länger als 12 Monate | bis ≥ von + 12 Monate | Belegter Fehler | nicht bezifferbar | Abrechnungszeitraum |
+| F-01.b | Abrechnung vor Ende des Zeitraums erstellt | Datum der Abrechnung < Ende des Abrechnungszeitraums | Begründeter Prüfbedarf | nicht bezifferbar | Abrechnungszeitraum, Datum der Abrechnung |
 | F-02.a | Abrechnung verspätet, Zeitraum bestätigt | Zugang > Zeitraumende + 12 Monate und Saldo > 0 und Zeitraum bestätigt → Betrag = Saldo | Belegter Fehler | exakt | Zeitraum, Zugangsdatum, Saldo, Vorjahresabrechnung |
 | F-02.b | Abrechnung möglicherweise verspätet | Zugang > Zeitraumende + 12 Monate und Saldo > 0, Zeitraum noch nicht bestätigt → möglicher Betrag = Saldo | Prüfbedarf (Unterlage nötig) | bis zu | Zeitraum, Zugangsdatum, Saldo |
 | F-02.c | Abrechnung verspätet bei Guthaben | Zugang > Zeitraumende + 12 Monate und Saldo ≤ 0 | Begründeter Prüfbedarf | nicht bezifferbar | Zeitraum, Zugangsdatum, Saldo |
 | F-03.a | Einwendungsfrist abgelaufen | heute > Zugang + 12 Monate | Begründeter Prüfbedarf | nicht bezifferbar | Zugangsdatum |
 | F-04.a | Gesamtkosten einer Position fehlen | Position ohne Gesamtkosten (außer direkt zugeordnet) | Begründeter Prüfbedarf | nicht bezifferbar | Kostenpositionen |
 | F-04.b | Umlageschlüssel einer Position fehlt | Position ohne Umlageschlüssel | Begründeter Prüfbedarf | nicht bezifferbar | Kostenpositionen |
+| F-04.c | Werte des Umlageschlüssels fehlen | Position mit Umlageschlüssel, aber ohne Gesamtmenge oder eigenen Anteil (außer direkt zugeordnet) | Begründeter Prüfbedarf | nicht bezifferbar | Kostenpositionen |
 | F-05.a | Abrechnung trotz Pauschale | Pauschale vereinbart → Betrag = Saldo, falls Saldo > 0 | Belegter Fehler | exakt | Mietvertrag, Saldo |
 | R-01.a | Anteil einer Position falsch berechnet | Betrag = Anteil − Gesamtkosten × AnteilEinheit / AnteilGesamt × Zeitanteil, falls \|Betrag\| > 0,05 € | Belegter Fehler | exakt | Gesamtkosten, Umlageschlüssel, Anteil |
+| R-01.b | Anteil einer Verbrauchsposition nicht nachvollziehbar | Schlüssel = Verbrauch und Anteil − Gesamtkosten × eigener Verbrauch / Gesamtverbrauch > 0,05 € → möglicher Betrag = Differenz (ein Grundpreis kann die Abweichung erklären) | Begründeter Prüfbedarf | bis zu | Gesamtkosten, Verbrauchswerte, Anteil |
 | R-02.a | Gesamtsumme falsch addiert | Betrag = ausgewiesene Summe − (Σ Anteile der Positionen + Heizkostenanteil), falls \|Betrag\| > 0,05 € | Belegter Fehler | exakt | Positionen, ausgewiesene Summe |
 | R-03.a | Saldo falsch berechnet | Betrag = ausgewiesener Saldo − (Summe − Vorauszahlungen), falls \|Betrag\| > 0,05 € | Belegter Fehler | exakt | Summe, Vorauszahlungen, Saldo |
 | R-04.a | Falscher Flächennenner bei Heizkosten | Nenner ≠ Gesamtfläche und Abrechnung nennt dieselbe beheizte Gesamtfläche → Betrag = Anteil − Gesamtkosten × AnteilEinheit / Gesamtfläche | Belegter Fehler | exakt | Gesamtfläche, beheizte Gesamtfläche, Position |
@@ -34,6 +37,10 @@ Nachweis: `packages/pruefkern/test/fehlerkatalog.test.ts` baut jede Fehlerart in
 | R-09.a | Rechnung eines anderen Hauses umgelegt | Beleg ist für ein anderes Objekt ausgestellt → Betrag = Belegbetrag × Anteil / Gesamtkosten der Position | Belegter Fehler | exakt | Beleg mit Objektangabe |
 | R-09.b | Mehr übernommen als im Beleg (z. B. Umsatzsteuer doppelt) | übernommener Betrag − Betrag laut Beleg > 0,05 € → Betrag = Differenz × Anteil / Gesamtkosten der Position | Belegter Fehler | exakt | Beleg und übernommener Betrag |
 | R-09.c | Gutschrift nicht abgezogen | Σ Rechnungen = abgerechnete Gesamtkosten (Gutschrift fehlt) → Betrag = Gutschrift × Anteil / Gesamtkosten | Belegter Fehler | exakt | Rechnungen und Gutschrift |
+| R-10.a | Keine Zwischenablesung bei Ein- oder Auszug | Mietzeit kürzer als der Abrechnungszeitraum, Verbrauchskosten abgerechnet und Zähler zum Wechsel nicht abgelesen | Begründeter Prüfbedarf | nicht bezifferbar | Mietbeginn/-ende, Angabe zur Zwischenablesung |
+| R-11.a | Gesamtfläche kleiner als im Vorjahr | (Gesamtfläche Vorjahr − Gesamtfläche) / Gesamtfläche Vorjahr > 1 % → möglicher Betrag = Kosten nach Fläche × (1 − Gesamtfläche / Gesamtfläche Vorjahr) | Begründeter Prüfbedarf | bis zu | Flächen der Vorjahresabrechnung |
+| R-11.b | Wohnfläche größer als im Vorjahr | (Wohnfläche − Wohnfläche Vorjahr) / Wohnfläche Vorjahr > 1 % → möglicher Betrag = Kosten nach Fläche × (1 − Wohnfläche Vorjahr / Wohnfläche) | Begründeter Prüfbedarf | bis zu | Flächen der Vorjahresabrechnung |
+| R-12.a | Anderer Verteilerschlüssel als im Mietvertrag | Schlüssel einer kalten Position ≠ vereinbarter Schlüssel (ohne Vereinbarung: Wohnfläche); Verbrauch, direkte Zuordnung und Heizung ausgenommen | Begründeter Prüfbedarf | nicht bezifferbar | Mietvertrag (Verteilerschlüssel) |
 | I-01.a | Verwaltungskosten umgelegt | Kategorie = Verwaltung → Betrag = Anteil | Belegter Fehler | exakt | Kostenpositionen |
 | I-01.b | Reparaturen/Instandhaltung umgelegt | Kategorie = Instandhaltung → Betrag = Anteil | Belegter Fehler | exakt | Kostenpositionen |
 | I-01.c | Rücklage umgelegt | Kategorie = Rücklage → Betrag = Anteil | Belegter Fehler | exakt | Kostenpositionen |
@@ -41,6 +48,8 @@ Nachweis: `packages/pruefkern/test/fehlerkatalog.test.ts` baut jede Fehlerart in
 | I-02.a | Sonstige Betriebskosten nicht vereinbart | Kategorie = Sonstige und Bezeichnung nicht im Mietvertrag → Betrag = Anteil | Belegter Fehler | exakt | Mietvertrag |
 | I-03.a | Position keiner Kostenart zuordenbar | Kategorie = unbekannt | Begründeter Prüfbedarf | nicht bezifferbar | Kostenpositionen |
 | I-04.a | Heizung nicht nach Verbrauch abgerechnet | Verbrauch nicht erfasst → Betrag = Heizkostenanteil × 15 % | Belegter Fehler | exakt | Heizkostenabrechnung |
+| I-04.c | Warmwasser nicht nach Verbrauch abgerechnet | Warmwasserverbrauch nicht erfasst (Heizung erfasst) → Betrag = Warmwasseranteil × 15 % | Belegter Fehler | exakt | Heizkostenabrechnung mit Warmwasseranteil |
+| I-04.d | Warmwasser nicht nach Verbrauch, Anteil unbekannt | Warmwasserverbrauch nicht erfasst, Warmwasseranteil der Wohnung nicht ausgewiesen | Prüfbedarf (Unterlage nötig) | nicht bezifferbar | Heizkostenabrechnung |
 | I-04.b | Verbrauchsanteil außerhalb 50–70 % | Verbrauchsanteil < 50 % oder > 70 % | Begründeter Prüfbedarf | nicht bezifferbar | Heizkostenabrechnung |
 | I-05.a | Kabelkosten nach dem 30.06.2024 | Zeitraumbeginn ≥ 01.07.2024 → Betrag = Anteil | Belegter Fehler | exakt | Zeitraum, Kabelposition |
 | I-05.b | Kabelkosten über den 30.06.2024 hinaus | möglicher Betrag = Anteil × Tage ab 01.07.2024 / Tage des Zeitraums | Begründeter Prüfbedarf | bis zu | Zeitraum, Kabelposition |
@@ -67,6 +76,11 @@ Nachweis: `packages/pruefkern/test/fehlerkatalog.test.ts` baut jede Fehlerart in
 | I-17.c | Nicht umlagefähige Versicherung genannt, Betrag fehlt | Text nennt Rechtsschutz/Mietausfall/Hausrat ohne Betrag | Prüfbedarf (Unterlage nötig) | nicht bezifferbar | Bezeichnung, Erläuterungen |
 | I-18.a | Kosten einer fremden Privatfläche auf alle verteilt | allgemein verteilte Position enthält ausgewiesene Kosten einer allein genutzten Fläche (nicht der eigenen) → Betrag = Anteil × Teilbetrag / Gesamtkosten | Belegter Fehler | exakt | Aufschlüsselung oder Erläuterung mit Betrag |
 | I-18.b | Direkt berechnete Sonderleistung ohne Vertragsanlage | Position direkt zugeordnet und Abrechnung verweist auf eine fehlende Anlage oder Vereinbarung → Prüfbedarf, Unterlage anfordern | Prüfbedarf (Unterlage nötig) | nicht bezifferbar | Vertragsanlage |
+| I-19.a | CO₂-Angaben fehlen (Gas oder Heizöl) | Zeitraumbeginn ≥ 01.01.2023, Energieträger Gas/Heizöl, CO₂-Kosten und Einstufung nicht ausgewiesen → Betrag = Heizkostenanteil × 3 % | Belegter Fehler | exakt | Heizkostenabrechnung, Energieträger |
+| I-19.b | CO₂-Angaben fehlen, Energieträger unklar | Zeitraumbeginn ≥ 01.01.2023, CO₂-Angaben fehlen, Energieträger Fernwärme oder unbekannt | Prüfbedarf (Unterlage nötig) | nicht bezifferbar | Heizkostenabrechnung |
+| I-20.a | Anschaffung oder einmalige Maßnahme umgelegt | Bezeichnung nennt Anschaffung, Erstbepflanzung, Leuchtmittel o. Ä. (nicht verneint) → Betrag = Anteil | Belegter Fehler | exakt | Bezeichnung |
+| I-20.b | Hinweis auf einmaligen Anlass | Bezeichnung nennt einmalig, Verstopfung, Sonderreinigung, Entrümpelung o. Ä. (nicht verneint) | Prüfbedarf (Unterlage nötig) | nicht bezifferbar | Bezeichnung |
+| I-21.a | Kostenart nicht im Mietvertrag vereinbart | Mietvertrag zählt Kostenarten auf und Kostenart der Position fehlt → Betrag = Anteil (ohne Heizkosten, Sonstige, nicht umlagefähige Kosten) | Belegter Fehler | exakt | Mietvertrag (umgelegte Kostenarten) |
 | K-01.a | Unstimmigkeit, die nur die KI-Kontrolle im Dokument findet | KI meldet eine Auffälligkeit mit wörtlicher Textstelle, die keine Formel erfasst → begründeter Prüfbedarf | Begründeter Prüfbedarf | nicht bezifferbar | KI-Kontrolle mit Textstelle |
 | P-01.a | Kostenart stark gestiegen | (Kosten − Vorjahr) / Vorjahr > 10 % und Kosten − Vorjahr > 25 € | Hinweis | nicht bezifferbar | Vorjahresabrechnung |
 | P-01.b | Neue Kostenart | Kostenart im Vorjahr nicht vorhanden | Begründeter Prüfbedarf | nicht bezifferbar | Vorjahresabrechnung |
@@ -80,7 +94,7 @@ Diese Fehler stehen nicht in den Zahlen der Abrechnung. Sie brauchen Belege oder
 - Gesamtkosten stimmen nicht mit den Rechnungen überein (nur durch Belegeinsicht prüfbar)
 - Leistungen wurden abgerechnet, aber nicht erbracht
 - Kosten sind unwirtschaftlich hoch (Vergleichswerte sind nur ein Hinweis)
-- Verteilerschlüssel weicht vom Mietvertrag ab, wenn der Mietvertrag nicht vorliegt
+- Verteilerschlüssel oder Kostenarten weichen vom Mietvertrag ab, wenn der Mietvertrag nicht vorliegt
 - Wohn- oder Gesamtfläche ist tatsächlich falsch vermessen
 - Zählerstände oder Verbrauchswerte wurden falsch abgelesen
 - Kosten gehören in ein anderes Abrechnungsjahr

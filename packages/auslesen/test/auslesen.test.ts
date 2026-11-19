@@ -193,6 +193,17 @@ describe("Modellaufruf", () => {
     expect(anfrage.fallbacks).toBe("default");
   });
 
+  it("neue Felder: Energieträger, CO₂-Angaben und Warmwasser werden übernommen", () => {
+    const r = roh();
+    r.heizkosten!.brennstoff = "gas";
+    r.heizkosten!.warmwasserVerbrauchErfasst = false;
+    r.heizkosten!.warmwasserAnteilMieter = 412.5;
+    expect(wandleUm(r).abrechnung.heizkosten!).toMatchObject({ brennstoff: "gas", co2Ausgewiesen: true, warmwasser: { verbrauchErfasst: false, anteilMieter: 412.5 } });
+    // CO₂-Werte gelesen, Feld aber falsch gesetzt: gilt trotzdem als ausgewiesen
+    r.heizkosten!.co2Ausgewiesen = false;
+    expect(wandleUm(r).abrechnung.heizkosten!.co2Ausgewiesen).toBe(true);
+  });
+
   it("erkennt Dokumente, die keine Nebenkostenabrechnung sind", async () => {
     const { c } = client({ parsed_output: { ...roh(), istNebenkostenabrechnung: false } });
     const a = await leseAus(c, [PDF]);

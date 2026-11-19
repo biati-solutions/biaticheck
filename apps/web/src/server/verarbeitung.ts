@@ -273,6 +273,10 @@ export async function verarbeiteUnterlage(
       daten = wendeAntwortAn(daten, "meta.zeitraumBestaetigt", true);
       await tx.insert(antworten).values({ fallId, feld: "meta.zeitraumBestaetigt", wert: true });
     }
+    // Flächen der Vorjahresabrechnung nur übernehmen, wenn sie wirklich das direkt vorhergehende Jahr betrifft (Regel R-11).
+    if (zeitraumPasst && verlauf.flaechen) {
+      daten = { ...daten, vorjahr: { kostenpositionen: daten.vorjahr?.kostenpositionen ?? [], flaechen: verlauf.flaechen } };
+    }
     const bericht = pruefeAbrechnung(daten, { heute: deps.heute?.() });
     await tx.update(faelle).set({ daten, bericht, aktualisiertAm: new Date() }).where(eq(faelle.id, fallId));
     await tx.insert(protokoll).values({

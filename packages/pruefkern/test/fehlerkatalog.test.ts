@@ -408,6 +408,79 @@ const EINBAUEN: Record<string, (a: AbrechnungEingabe, z: Zufall) => Erwartung> =
     pos.gesamtkosten = runde((pos.anteilMieter * g(a)) / w(a));
     return {};
   },
+  "F-01.b": (a) => ((a.meta.erstelltAm = "2025-11-30"), (a.meta.zugangAm = "2025-12-03"), { heute: "2026-01-15" }),
+  "F-04.c": (a) => {
+    const pos = p(a, "k06");
+    pos.umlageschluessel = { typ: "wohnflaeche" };
+    return { positionId: "k06" };
+  },
+  "R-01.b": (a, z) => {
+    const pos = p(a, "k02");
+    const mehr = z.euro(5, 60);
+    pos.anteilMieter = runde(pos.anteilMieter + mehr);
+    a.ausgewiesen!.summeKostenMieter = runde(a.ausgewiesen!.summeKostenMieter! + mehr);
+    a.ausgewiesen!.saldo = runde(a.ausgewiesen!.saldo! + mehr);
+    return { betrag: mehr, positionId: "k02" };
+  },
+  "R-10.a": (a) => {
+    a.mietvertrag!.mietbeginn = "2025-04-01";
+    a.meta.nutzungszeitraum = { von: "2025-04-01", bis: "2025-12-31" };
+    a.meta.zwischenablesung = false;
+    // Anteile zeitanteilig, damit nur die fehlende Ablesung auffällt
+    const faktor = tage("2025-04-01", "2025-12-31") / tage("2025-01-01", "2025-12-31");
+    let summe = a.heizkosten!.anteilMieter;
+    for (const pos of a.kostenpositionen) {
+      if (pos.umlageschluessel!.typ !== "verbrauch") pos.anteilMieter = runde(((pos.gesamtkosten! * pos.umlageschluessel!.anteilEinheit!) / pos.umlageschluessel!.anteilGesamt!) * faktor);
+      summe += pos.anteilMieter;
+    }
+    a.ausgewiesen!.summeKostenMieter = runde(summe);
+    a.ausgewiesen!.saldo = runde(summe - a.vorauszahlungen!);
+    a.vorjahr = undefined;
+    return {};
+  },
+  "R-11.a": (a, z) => {
+    const vorjahr = Math.round(g(a) * z.zahl(1.05, 1.4));
+    a.vorjahr = { ...a.vorjahr!, flaechen: { wohnflaecheMieter: w(a), gesamtflaeche: vorjahr } };
+    const nachFlaeche = runde(a.kostenpositionen.filter((x) => x.umlageschluessel!.typ === "wohnflaeche").reduce((s, x) => s + x.anteilMieter, 0));
+    return { betrag: runde(nachFlaeche * (1 - g(a) / vorjahr)) };
+  },
+  "R-11.b": (a, z) => {
+    const vorjahr = runde(w(a) * z.zahl(0.7, 0.95));
+    a.vorjahr = { ...a.vorjahr!, flaechen: { wohnflaecheMieter: vorjahr, gesamtflaeche: g(a) } };
+    const nachFlaeche = runde(a.kostenpositionen.filter((x) => x.umlageschluessel!.typ === "wohnflaeche").reduce((s, x) => s + x.anteilMieter, 0));
+    return { betrag: runde(nachFlaeche * (1 - vorjahr / w(a))) };
+  },
+  "R-12.a": (a) => ((a.mietvertrag!.umlageschluessel = "personen"), {}),
+  "I-04.c": (a, z) => {
+    const ww = runde(a.heizkosten!.anteilMieter * z.zahl(0.15, 0.4));
+    a.heizkosten!.warmwasser = { verbrauchErfasst: false, anteilMieter: ww };
+    return { betrag: runde(ww * 0.15) };
+  },
+  "I-04.d": (a) => ((a.heizkosten!.warmwasser = { verbrauchErfasst: false }), {}),
+  "I-19.a": (a, z) => {
+    a.heizkosten!.co2Ausgewiesen = false;
+    a.heizkosten!.brennstoff = z.ganz(0, 1) ? "gas" : "heizoel";
+    return { betrag: runde(a.heizkosten!.anteilMieter * 0.03) };
+  },
+  "I-19.b": (a, z) => {
+    a.heizkosten!.co2Ausgewiesen = false;
+    if (z.ganz(0, 1)) a.heizkosten!.brennstoff = "fernwaerme";
+    return {};
+  },
+  "I-20.a": (a, z) => {
+    const pos = neu(a, z, ["Anschaffung Mülltonnen", "Erstbepflanzung Vorgarten", "Leuchtmittel Treppenhaus", "Kauf Feuerlöscher"][z.ganz(0, 3)]!, "sonstige");
+    a.mietvertrag!.vereinbarteSonstigeKosten = [pos.bezeichnung];
+    return { betrag: pos.anteilMieter, positionId: pos.id };
+  },
+  "I-20.b": (a, z) => {
+    const pos = neu(a, z, ["Rohrreinigung nach Verstopfung", "Sonderreinigung Keller", "Entrümpelung Dachboden", "Graffitientfernung"][z.ganz(0, 3)]!, "sonstige");
+    a.mietvertrag!.vereinbarteSonstigeKosten = [pos.bezeichnung];
+    return { positionId: pos.id };
+  },
+  "I-21.a": (a) => {
+    a.mietvertrag!.umgelegteKostenarten = [...new Set(a.kostenpositionen.map((x) => x.kategorie))].filter((k) => k !== "gartenpflege");
+    return { betrag: p(a, "k07").anteilMieter, positionId: "k07" };
+  },
   "P-03.a": (a, z) => {
     const m3 = z.ganz(200, 1500);
     a.heizkosten!.warmwasser = { kostenGesamt: runde(m3 * z.zahl(20.5, 45)), verbrauchGesamtM3: m3 };

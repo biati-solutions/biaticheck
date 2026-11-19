@@ -57,6 +57,14 @@ export const Rohdaten = z.object({
       gesamtkosten: zahl.describe("Insgesamt zu verteilende Heiz- und Warmwasserkosten des Hauses"),
       verbrauchsanteilProzent: zahl.describe("Anteil der Heizkosten, der nach Verbrauch verteilt wird, z. B. 70"),
       verbrauchErfasst: z.boolean().nullable(),
+      brennstoff: z
+        .enum(["gas", "heizoel", "fernwaerme", "strom", "holz", "sonstig"])
+        .nullable()
+        .describe("Energieträger der Heizung laut Heizkostenabrechnung (Erdgas = gas, Wärmepumpe = strom, Pellets = holz); null, wenn nicht erkennbar"),
+      co2Ausgewiesen: z
+        .boolean()
+        .nullable()
+        .describe("true, wenn die Heizkostenabrechnung CO₂-Kosten oder die CO₂-Einstufung des Gebäudes nennt; false, wenn eine Heizkostenabrechnung vorliegt und beides fehlt; null, wenn unklar"),
       anteilMieter: z.number().describe("Heiz- und Warmwasserkosten der Wohnung OHNE Kaltwasser und ohne Positionen, die bereits in kostenpositionen stehen"),
       verbrauchMieter: zahl.describe("Abgerechneter Wärmeverbrauch der Wohnung, z. B. in kWh oder Einheiten"),
       verbrauchskostenMieter: zahl.describe("Verbrauchskostenanteil der Wohnung für Heizung in Euro (ohne Grundkosten)"),
@@ -65,6 +73,11 @@ export const Rohdaten = z.object({
       warmwasserKostenGesamt: zahl,
       warmwasserVerbrauchM3: zahl.describe("Gesamtverbrauch Warmwasser des Hauses in m³"),
       warmwasserEnergieKwh: zahl,
+      warmwasserAnteilMieter: zahl.describe("Warmwasserkosten der Wohnung in Euro (Teil von anteilMieter), nur wenn gesondert ausgewiesen"),
+      warmwasserVerbrauchErfasst: z
+        .boolean()
+        .nullable()
+        .describe("true, wenn der Warmwasserverbrauch der Wohnung in m³ mit Zähler ausgewiesen ist; false, wenn er erkennbar geschätzt, nach Formel berechnet oder in Strichen eines Verdunsters angegeben ist; null, wenn nicht erkennbar oder kein zentrales Warmwasser"),
       co2EmissionKg: zahl,
       co2FlaecheM2: zahl,
       co2KostenGesamt: zahl,

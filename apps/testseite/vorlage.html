@@ -268,7 +268,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       await abschreiben(seiten, maxBilder);
       haus.setze(0.5, 0.8);
       $("laden-titel").textContent = "Wir prüfen Ihre Abrechnung";
-      $("laden-text").textContent = `Beträge werden zugeordnet und mit ${P.REGELN_ANZAHL} Regeln geprüft …`;
+      $("laden-text").textContent = "Beträge werden zugeordnet und nachgerechnet …";
       const text = seiten.map((s, i) => `--- Seite ${i + 1} ---\n${s.text}`).join("\n\n");
       const prompt = [
         P.ANWEISUNG,
@@ -394,7 +394,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
 
   // ---------- Ergebnis ----------
   function auswertung() {
-    return P.werteAus(z.roh, HEUTE, z.antworten, z.mietvertrag ?? undefined, z.vorauszahlungen ?? undefined, z.kontrolle?.befunde ?? undefined);
+    return P.werteAus(z.roh, HEUTE, z.antworten, z.mietvertrag ?? undefined, z.vorauszahlungen ?? undefined, z.kontrolle?.befunde ?? undefined, z.vorjahrFlaechen ?? undefined);
   }
 
   // Die Anzeige darf nie leer bleiben: Jeder Fehler beim Auswerten oder Darstellen wird sichtbar gemeldet.
@@ -481,7 +481,7 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       ${z.kontrolle && (z.kontrolle.lesefehler.length || z.kontrolle.fehlendeZeilen.length || !z.kontrolle.durchgefuehrt) ? `<p class="hinweis">Die zweite Kontrolle konnte nicht alle Zeilen bestätigen. Ein Fachprüfer sollte dieses Ergebnis ansehen. Einzelheiten stehen unten unter „So haben wir geprüft“.</p>` : ""}
       <dl class="fakten">
         ${fehler}
-        ${saldo !== undefined ? `<div><dt>${saldo >= 0 ? "Ihre Nachzahlung" : "Ihr Guthaben"}</dt><dd>${wert(euro(Math.abs(saldo)), s1.erklaerungen.saldo)}</dd>${k.korrigierterSaldo !== undefined ? `<small>Nach Korrektur der belegten Fehler: ${wert(k.korrigierterSaldo > 0 ? `Nachzahlung ${euro(k.korrigierterSaldo)}` : `Guthaben ${euro(Math.abs(k.korrigierterSaldo))}`, s1.erklaerungen.korrigiert)}</small>` : ""}</div>` : ""}
+        ${saldo !== undefined ? `<div><dt>${saldo >= 0 ? "Ihre Nachzahlung" : "Ihr Guthaben"}</dt><dd>${wert(euro(Math.abs(saldo)), s1.erklaerungen.saldo)}</dd>${s1.zahlungsfrist ? `<small>${s1.zahlungsfrist.tageVerbleibend > 0 ? `${s1.zahlungsfrist.art === "nachzahlung" ? "zahlbar" : "auszuzahlen"} bis ${datumDE(s1.zahlungsfrist.bis)}` : `${s1.zahlungsfrist.art === "nachzahlung" ? "fällig" : "auszuzahlen"} seit ${datumDE(s1.zahlungsfrist.bis)}`}</small>` : ""}${k.korrigierterSaldo !== undefined ? `<small>Nach Korrektur der belegten Fehler: ${wert(k.korrigierterSaldo > 0 ? `Nachzahlung ${euro(k.korrigierterSaldo)}` : `Guthaben ${euro(Math.abs(k.korrigierterSaldo))}`, s1.erklaerungen.korrigiert)}</small>` : ""}</div>` : ""}
         <div><dt>Einspruch möglich</dt>${frist}</div>
         ${vergleich}
       </dl>
@@ -587,8 +587,8 @@ button.wert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px
       status("Vorauszahlungen werden ermittelt …");
       const text = seiten.map((s, i) => `--- Seite ${i + 1} ---\n${s.text}`).join("\n\n").slice(0, 150000);
       const antwort = await sample.json(`Das folgende Dokument ist eine Nebenkostenabrechnung des Vorjahres, Kontoauszüge oder ein Mietkonto eines Mieters. Ermittle die monatlichen Vorauszahlungen (Abschläge) für Betriebskosten und für Heizkosten, die im Zeitraum ${zr ? `${zr.von} bis ${zr.bis}` : "des Abrechnungsjahres"} galten, jeweils mit dem Datum, ab dem der Betrag galt. In einer Vorjahresabrechnung steht das meist als neue monatliche Vorauszahlung ab einem Datum. Übernimm nur Beträge, die ausdrücklich als Vorauszahlung oder Abschlag für Betriebs- oder Heizkosten erkennbar sind. Teile eine Gesamtmiete nicht selbst auf. Zahlen genau übernehmen, nicht runden.
-Ist das Dokument selbst eine Nebenkostenabrechnung, gib zusätzlich ihren Abrechnungszeitraum an.
-Antworte nur mit JSON: {"dokument": "vorjahresabrechnung" | "kontoauszug" | "mietkonto" | "anderes", "verlauf": [{"ab": "YYYY-MM-DD", "betriebskosten": number | null, "heizkosten": number | null}], "abrechnungszeitraum": {"von": "YYYY-MM-DD", "bis": "YYYY-MM-DD"} | null, "hinweis": string}
+Ist das Dokument selbst eine Nebenkostenabrechnung, gib zusätzlich ihren Abrechnungszeitraum sowie die Wohnfläche der Wohnung und die Gesamtfläche des Hauses an, wie sie dort stehen.
+Antworte nur mit JSON: {"dokument": "vorjahresabrechnung" | "kontoauszug" | "mietkonto" | "anderes", "verlauf": [{"ab": "YYYY-MM-DD", "betriebskosten": number | null, "heizkosten": number | null}], "abrechnungszeitraum": {"von": "YYYY-MM-DD", "bis": "YYYY-MM-DD"} | null, "wohnflaecheMieter": number | null, "gesamtflaeche": number | null, "hinweis": string}
 
 ${text}`, { modelTier: "complex", signal: ctl.signal });
       const verlauf = (Array.isArray(antwort?.verlauf) ? antwort.verlauf : [])
@@ -605,6 +605,12 @@ ${text}`, { modelTier: "complex", signal: ctl.signal });
       }
       if (verlauf.length) z.vorauszahlungen = { verlauf, quelle: antwort.dokument === "vorjahresabrechnung" ? "vorjahresabrechnung" : "kontoauszug" };
       if (zeitraumPasst) z.antworten["meta.zeitraumBestaetigt"] = true;
+      // Flächen des Vorjahres nur übernehmen, wenn die Abrechnung wirklich das direkt vorhergehende Jahr betrifft
+      if (zeitraumPasst) {
+        const fl = (v) => (typeof v === "number" && v > 0 && v < 1000000 ? v : undefined);
+        const flaechen = { ...(fl(antwort.wohnflaecheMieter) ? { wohnflaecheMieter: antwort.wohnflaecheMieter } : {}), ...(fl(antwort.gesamtflaeche) ? { gesamtflaeche: antwort.gesamtflaeche } : {}) };
+        if (Object.keys(flaechen).length) z.vorjahrFlaechen = flaechen;
+      }
       z.brief = null; z.vzStatus = "";
       const nachher = auswertung();
       const saetze = [];
@@ -645,7 +651,7 @@ ${text}`, { modelTier: "complex", signal: ctl.signal });
       status("Mietvertrag wird ausgewertet …");
       const text = seiten.map((s, i) => `--- Seite ${i + 1} ---\n${s.text}`).join("\n\n").slice(0, 150000);
       const mv = await sample.json(`Lies aus diesem deutschen Wohnraum-Mietvertrag die Vereinbarungen zu den Betriebskosten aus. Antworte nur mit JSON:
-{"istMietvertrag": boolean, "pauschaleVereinbart": boolean | null (true, wenn statt Vorauszahlungen mit Abrechnung eine Betriebskostenpauschale vereinbart ist), "vereinbarteSonstigeKosten": string[] | null (alle ausdrücklich vereinbarten sonstigen Betriebskosten nach § 2 Nr. 17 BetrKV mit ihrer Bezeichnung; leere Liste, wenn keine vereinbart sind; null, wenn die Betriebskostenvereinbarung nicht enthalten ist), "aufzugAusgenommen": boolean | null (true, wenn Erdgeschosswohnungen ausdrücklich von den Aufzugskosten ausgenommen sind), "mietbeginn": string | null (Beginn des Mietverhältnisses als YYYY-MM-DD), "mietende": string | null (Ende des Mietverhältnisses als YYYY-MM-DD, nur wenn befristet oder gekündigt), "wohnflaeche": number | null (vereinbarte Wohnfläche in m²), "gewerbeImHaus": boolean | null (true, wenn der Vertrag Gewerbe im Haus erwähnt, z. B. Laden, Praxis, Gaststätte)}
+{"istMietvertrag": boolean, "pauschaleVereinbart": boolean | null (true, wenn statt Vorauszahlungen mit Abrechnung eine Betriebskostenpauschale vereinbart ist), "vereinbarteSonstigeKosten": string[] | null (alle ausdrücklich vereinbarten sonstigen Betriebskosten nach § 2 Nr. 17 BetrKV mit ihrer Bezeichnung; leere Liste, wenn keine vereinbart sind; null, wenn die Betriebskostenvereinbarung nicht enthalten ist), "aufzugAusgenommen": boolean | null (true, wenn Erdgeschosswohnungen ausdrücklich von den Aufzugskosten ausgenommen sind), "mietbeginn": string | null (Beginn des Mietverhältnisses als YYYY-MM-DD), "mietende": string | null (Ende des Mietverhältnisses als YYYY-MM-DD, nur wenn befristet oder gekündigt), "wohnflaeche": number | null (vereinbarte Wohnfläche in m²), "gewerbeImHaus": boolean | null (true, wenn der Vertrag Gewerbe im Haus erwähnt, z. B. Laden, Praxis, Gaststätte), "umgelegteKostenarten": "alle" | string[] | null ("alle", wenn der Vertrag auf die Betriebskostenverordnung bzw. § 2 BetrKV verweist oder alle dort genannten Betriebskosten umlegt; sonst die Liste der ausdrücklich aufgezählten Kostenarten mit genau diesen Schlüsseln: ${Object.keys(P.KOSTENARTEN).filter((k) => !["sonstige", "verwaltung", "instandhaltung", "ruecklage", "bank_porto", "unbekannt"].includes(k)).join(", ")}; leere Liste, wenn keine Betriebskosten umgelegt sind; null, wenn die Betriebskostenvereinbarung nicht enthalten oder unklar ist), "umlageschluessel": "wohnflaeche" | "personen" | "einheiten" | "miteigentumsanteil" | "keine" | null (ausdrücklich vereinbarter Verteilerschlüssel für die kalten Betriebskosten; "keine", wenn der Vertrag ausdrücklich keinen festlegt; null, wenn unklar oder je Kostenart verschieden)}
 
 ${text}`, { modelTier: "complex", signal: ctl.signal });
       if (mv?.istMietvertrag === false) { status("Das sieht nicht nach einem Mietvertrag aus. Bitte laden Sie den Mietvertrag hoch."); $("mv-datei").disabled = false; return; }
@@ -658,6 +664,13 @@ ${text}`, { modelTier: "complex", signal: ctl.signal });
       if (iso(mv?.mietende)) daten.mietende = mv.mietende;
       if (typeof mv?.wohnflaeche === "number" && mv.wohnflaeche > 10 && mv.wohnflaeche < 1000) daten.wohnflaeche = mv.wohnflaeche;
       if (mv?.gewerbeImHaus === true) daten.gewerbeImHaus = true;
+      if (mv?.umgelegteKostenarten === "alle") daten.umgelegteKostenarten = "alle";
+      else if (Array.isArray(mv?.umgelegteKostenarten)) {
+        // Nur bekannte Schlüssel übernehmen. Enthält die Liste Unbekanntes, bleibt die Angabe offen – lieber keine Aussage als ein falscher Fehler.
+        const arten = mv.umgelegteKostenarten.map(String);
+        if (arten.every((k) => k in P.KOSTENARTEN)) daten.umgelegteKostenarten = arten;
+      }
+      if (["wohnflaeche", "personen", "einheiten", "miteigentumsanteil", "keine"].includes(mv?.umlageschluessel)) daten.umlageschluessel = mv.umlageschluessel;
       const vorher = auswertung().s1.fehlerpotenzial;
       z.mietvertrag = daten; z.brief = null; z.mvStatus = "";
       const nachher = auswertung().s1.fehlerpotenzial;
@@ -669,6 +682,20 @@ ${text}`, { modelTier: "complex", signal: ctl.signal });
       status(e?.code === "cancelled" ? "" : "Der Mietvertrag konnte nicht gelesen werden. Bitte versuchen Sie es noch einmal.");
       const d = $("mv-datei"); if (d) d.disabled = false;
     }
+  }
+
+  // Erinnerung und Belegeinsicht: eingeklappt, bis sie gebraucht werden
+  function weitereSchreiben(s2) {
+    const eins = (titel, b, zusatz = "") => {
+      const pers = P.personalisiereAnschreiben(b, z.kontakt);
+      return `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">${titel}</summary>
+        <label class="feld" style="margin-top:8px"><span class="leise" style="font-weight:400">Betreff: ${esc(pers.betreff)}</span><textarea rows="10" readonly>${esc(pers.text)}</textarea></label>${zusatz}
+        <div class="reihe"><a class="knopf neben" href="mailto:${pers.an ?? ""}?subject=${encodeURIComponent(pers.betreff)}&body=${encodeURIComponent(pers.text)}">Per E-Mail senden</a></div></details>`;
+    };
+    return (
+      (s2.belegeinsicht ? eins("Nur die Belege anfordern", s2.belegeinsicht, `<ul class="belege">${P.BELEG_PRUEFLISTE.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`) : "") +
+      (s2.nachfassschreiben ? eins("Keine Antwort nach 14 Tagen? Erinnerung senden", s2.nachfassschreiben) : "")
+    );
   }
 
   function panel(s2) {
@@ -684,8 +711,12 @@ ${text}`, { modelTier: "complex", signal: ctl.signal });
         ${feld("mieterAnschrift", "Ihre Anschrift", k.mieterAnschrift, true)}
         <div class="zwei">${feld("vermieterName", "Hausverwaltung", k.vermieterName)}${feld("vermieterEmail", "E-Mail der Hausverwaltung", k.vermieterEmail, false, "email")}</div>
         ${feld("vermieterAnschrift", "Anschrift der Hausverwaltung", k.vermieterAnschrift, true)}
+        ${s2.rueckfragen.filter((f) => f.feld === "meta.nachzahlungGezahlt").map((f) => `<div class="reihe" style="gap:8px"><span style="font-size:15px;flex:1 1 220px">${esc(f.frage)} Dann passen wir das Schreiben an.</span>
+          <button class="knopf neben" type="button" data-aktion="janein" data-feld="${esc(f.feld)}" data-wert="ja">Ja</button>
+          <button class="knopf neben" type="button" data-aktion="janein" data-feld="${esc(f.feld)}" data-wert="nein">Nein</button></div>`).join("")}
         <label class="feld" for="anschreiben"><span class="leise" style="font-weight:400">Betreff: ${esc(betreff)}</span><textarea id="anschreiben" rows="14">${esc(brief)}</textarea></label>
-        <div class="reihe"><a class="knopf haupt" id="mailto" href="mailto:${pers.an ?? ""}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(brief)}">${pers.an ? "E-Mail an die Hausverwaltung" : "Per E-Mail senden"}</a><button class="knopf neben" type="button" data-aktion="kopieren">Text kopieren</button></div></section>`;
+        <div class="reihe"><a class="knopf haupt" id="mailto" href="mailto:${pers.an ?? ""}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(brief)}">${pers.an ? "E-Mail an die Hausverwaltung" : "Per E-Mail senden"}</a><button class="knopf neben" type="button" data-aktion="kopieren">Text kopieren</button></div>
+        ${weitereSchreiben(s2)}</section>`;
     }
     if (z.panel === "beratung") {
       if (z.beratung) return `<section class="karte" id="panel" role="status"><h2>Danke, wir melden uns.</h2><p class="leise">Im Test wird nichts gesendet.</p></section>`;
@@ -722,10 +753,10 @@ ${text}`, { modelTier: "complex", signal: ctl.signal });
       kontrolle = `<p>${k.zeilenBestaetigt} von ${k.zeilenGesamt} Zeilen stimmen mit Ihrem Dokument überein.${k.bestanden ? " Keine Zeile fehlt, nichts Zusätzliches aufgefallen." : ""}</p>${punkte.length ? `<ul class="belege" style="display:grid;gap:4px">${punkte.map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}`;
     }
     return `<details class="karte"><summary>So haben wir geprüft</summary>
-      <h3 style="margin:12px 0 4px">1. Formelprüfung</h3>
+      <h3 style="margin:12px 0 4px">1. Nachrechnung Zeile für Zeile</h3>
       <p>${p.zeilen.length} Zeilen, ${p.anzahlPruefungen} Prüfungen. ${p.vollstaendigkeit.ok ? "Die Summe aller Zeilen ergibt die ausgewiesene Gesamtsumme." : "Die Summe der Zeilen ergibt nicht die ausgewiesene Gesamtsumme."}</p>
       <table class="tabelle"><tbody>${zeilen}</tbody></table>
-      <h3 style="margin:16px 0 4px">2. Kontrolle durch die KI</h3>${kontrolle}</details>`;
+      <h3 style="margin:16px 0 4px">2. Abgleich mit Ihrem Dokument</h3>${kontrolle}</details>`;
   }
 
   // ---------- Bedienung ----------

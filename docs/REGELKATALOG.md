@@ -1,4 +1,4 @@
-# Regelkatalog v0.5 (Entwurf)
+# Regelkatalog v0.15 (Entwurf)
 
 Alle Regeln haben den Stand **Entwurf** und müssen vom Expertenteam bestätigt werden.
 Code: `packages/pruefkern/src/regeln/` · Tests: `packages/pruefkern/test/`
@@ -146,3 +146,51 @@ Auffälligkeiten, die nur die KI-Kontrolle im Dokument findet, werden als Regel 
 - **Ohne Befund keine Zahlung:** Gibt es keinen Fehler, keinen Prüfbedarf und keinen Hinweis, wird nichts berechnet.
 - Gesperrte Inhalte werden in der Web-App nicht an den Browser geschickt. Auf der Testseite ist die Zahlung simuliert (es wird nichts berechnet).
 - Das frühere Modell (Fehler kostenlos, Erledigen-Paket 9,90 € ab 30 € Ersparnis) entfällt.
+
+## Ergänzungen v0.15 (Abgleich mit Wettbewerbern, Ratgebern und den sieben Prüfbereichen)
+
+Quelle: Analyse vom 11.11.2026 (Mineko-AGB, NebenkostenPro, Verbraucherzentrale Energieberatung, VR.de, Finanztip-Anbietertest 2026) und der Abgleich mit den Prüfbereichen Zeitraum/Erstellung, Rechnung, Verteilerschlüssel, Umlagefähigkeit, Form, Mietvertrag und Rechtsprechung. Übernommen wurde nur, was auf dem Stand 0.14 fehlte. Alle Fehlerarten stehen im Fehlerkatalog und haben einen Nachweistest.
+
+| Regel | Inhalt | Ergebnis |
+|---|---|---|
+| F-01 (erweitert) | Abrechnung vor Ende des Abrechnungszeitraums datiert | Prüfbedarf ohne Betrag |
+| F-04 (erweitert) | Zum Umlageschlüssel fehlen die Werte (Gesamtmenge, eigener Anteil) | Prüfbedarf ohne Betrag |
+| R-01 (erweitert) | Auch nach Verbrauch verteilte Positionen werden nachgerechnet. Weil ein Grundpreis die Abweichung erklären kann: kein belegter Fehler | Prüfbedarf „bis zu“ |
+| R-10 (neu) | Ein- oder Auszug: Zwischenablesung erfolgt? (§ 9b HeizkostenV) | ohne Ablesung Prüfbedarf; unbekannt: Rückfrage |
+| R-11 (neu) | Gesamtfläche kleiner oder Wohnfläche größer als im Vorjahr (über 1 %) | Prüfbedarf „bis zu“ |
+| R-12 (neu) | Verteilerschlüssel weicht vom Mietvertrag ab; ohne Vereinbarung gilt die Wohnfläche | Prüfbedarf ohne Betrag |
+| I-04 (erweitert) | Warmwasser ohne Zähler (Schätzung, Formel, Verdunster): 15 % der Warmwasserkosten (§ 12 HeizkostenV). Nicht zusätzlich zur Kürzung der ganzen Heizkosten | belegter Fehler; ohne ausgewiesenen Warmwasseranteil Prüfbedarf |
+| I-05 (erweitert) | Betriebsstrom der Anlage und Glasfaserbereitstellungsentgelt bleiben umlagefähig | kein Befund |
+| I-19 (neu) | CO₂-Kosten und Einstufung fehlen in der Heizkostenabrechnung (Zeiträume ab 2023): 3 % der Heizkosten (§ 7 Abs. 4 CO2KostAufG) | Gas/Heizöl: belegter Fehler; Fernwärme oder unbekannt: Prüfbedarf; Strom/Holz: kein Befund |
+| I-20 (neu) | Anschaffungen und einmalige Kosten (Anschaffung, Erstbepflanzung, Leuchtmittel; Hinweise wie Verstopfung, Sonderreinigung) | eindeutig: belegter Fehler; Hinweis: Prüfbedarf ohne Betrag |
+| I-21 (neu) | Kostenart im Mietvertrag nicht auf den Mieter umgelegt (Verweis auf die BetrKV = alle) | belegter Fehler in Höhe des Anteils |
+
+Bewusst **nicht** übernommen, weil sie unbegründete Warnungen erzeugen würden oder schon abgedeckt sind: Kennwert je Kostenart (nur statistisch), „Hauswart und Gartenpflege doppelt“ ohne Beleg, pauschal 20 % beim Hauswart (nur Amtsgericht), unverständliche Abkürzungen (übernimmt die KI-Kontrolle K-01), Versicherungsarten (I-17).
+
+### Zahlungshinweis und Fristen
+
+Ein Einwand gegen die Abrechnung schiebt die Fälligkeit der Nachzahlung nicht auf (§ 286 Abs. 3 BGB). Verbraucherzentrale, Finanztip und VR.de empfehlen übereinstimmend die Zahlung unter Vorbehalt.
+
+| Lage | Schritt im Fahrplan |
+|---|---|
+| Nachforderung entfällt insgesamt (F-02 bestätigt, F-05) | „Nachzahlung nicht bezahlen“ |
+| Frist möglicherweise versäumt (F-02 Prüfbedarf) | „Nachzahlung nur unter Vorbehalt zahlen“ (vorher: vorerst nicht bezahlen) |
+| Belegte Fehler oder Punkte zum Klären | „Nachzahlung unter Vorbehalt zahlen“, Betrag mit dem Schreiben zurückfordern (vorher: höchstens Saldo − sicher zahlen bzw. ab 30 € noch nicht bezahlen) |
+| Kunde hat schon gezahlt (`meta.nachzahlungGezahlt`) | „Zu viel Gezahltes zurückfordern“, das Schreiben nennt die geleistete Zahlung |
+
+- Zahlungsfrist: Zugang + 30 Tage, neben der Einspruchsfrist (`Stufe1.zahlungsfrist`).
+- Vom Expertenteam bzw. Anwalt zu bestätigen (RDG).
+
+### Weitere Ausgaben
+
+- `nachfassschreiben`: Erinnerung, wenn die Hausverwaltung nach 14 Tagen nicht antwortet.
+- `belegeinsicht`: eigenes Schreiben nur für die Belege, dazu eine Prüfliste je Beleg (`BELEG_PRUEFLISTE`).
+- Frage „Haben Sie die Nachzahlung schon bezahlt?“, wenn es etwas zu beanstanden gibt.
+- Der Prüfbericht nennt den Stand der berücksichtigten Rechtsprechung (`rechtsstand`, derzeit 2026-11). Neue Urteile pflegt das Expertenteam ein und setzt danach `RECHTSSTAND` hoch.
+- Kundentexte nennen die Zahl der Prüfregeln nicht mehr. Auf der Testseite heißen die beiden Prüfschritte „Nachrechnung Zeile für Zeile“ und „Abgleich mit Ihrem Dokument“.
+
+### Auslesen
+
+- Neue Felder: Energieträger, CO₂-Angaben vorhanden, Warmwasser mit Zähler erfasst, Warmwasseranteil der Wohnung.
+- Vorjahresabrechnung: zusätzlich Wohn- und Gesamtfläche (nur übernommen, wenn der Zeitraum lückenlos anschließt).
+- Mietvertrag (Testseite): zusätzlich die umgelegten Kostenarten und der vereinbarte Verteilerschlüssel. Unklare Angaben bleiben offen.

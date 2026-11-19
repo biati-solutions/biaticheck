@@ -14,7 +14,13 @@ import { K01_KiKontrolle } from "./regeln/kontrolle";
 import { RECHNERISCHE_REGELN } from "./regeln/rechnerisch";
 import { Abrechnung, type AbrechnungEingabe } from "./schema";
 
-export const REGELWERK_VERSION = "0.14.0";
+export const REGELWERK_VERSION = "0.15.0";
+
+/**
+ * Stand der Rechtsprechung, bis zu dem das Regelwerk durchgesehen wurde (Jahr-Monat). Bei jeder Durchsicht neuer
+ * Urteile hochsetzen; die berücksichtigten Entscheidungen stehen je Regel in `grundlage`.
+ */
+export const RECHTSSTAND = "2026-11";
 
 export const ALLE_REGELN: readonly Regel[] = [
   ...FORMELLE_REGELN,
@@ -26,6 +32,8 @@ export const ALLE_REGELN: readonly Regel[] = [
 
 export interface Pruefbericht {
   regelwerkVersion: string;
+  /** Stand der berücksichtigten Rechtsprechung (fehlt in älteren Berichten). */
+  rechtsstand?: string;
   geprueftAm: string;
   ergebnisse: Regelergebnis[];
   zusammenfassung: {
@@ -114,6 +122,7 @@ export function pruefeAbrechnung(eingabe: AbrechnungEingabe, optionen: Pruefopti
 
   return {
     regelwerkVersion: REGELWERK_VERSION,
+    rechtsstand: RECHTSSTAND,
     geprueftAm: heute,
     ergebnisse,
     zusammenfassung: {

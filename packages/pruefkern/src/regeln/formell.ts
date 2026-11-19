@@ -37,6 +37,19 @@ export const F01_Abrechnungszeitraum: Regel = {
         },
       ];
     }
+    // Erstellung: Über einen Zeitraum kann erst abgerechnet werden, wenn er abgelaufen ist.
+    const erstellt = a.meta.erstelltAm;
+    if (erstellt && vergleiche(erstellt, z.bis) < 0) {
+      return [
+        {
+          status: "auffaelligkeit",
+          titel: "Abrechnung vor Ende des Zeitraums erstellt",
+          erklaerung: `Die Abrechnung trägt das Datum ${datumDE(erstellt)}, der Abrechnungszeitraum endet aber erst am ${datumDE(z.bis)}. Die Kosten des ganzen Zeitraums können zu diesem Zeitpunkt noch nicht feststehen.`,
+          naechsterSchritt: "Fragen Sie nach, ob Zeitraum oder Datum falsch angegeben sind und ob Kosten geschätzt wurden.",
+          beleg: { von: z.von, bis: z.bis, erstelltAm: erstellt },
+        },
+      ];
+    }
     return [
       {
         status: "ok",
@@ -184,6 +197,9 @@ export const F04_Mindestangaben: Regel = {
         const fehlend: string[] = [];
         if (p.gesamtkosten === undefined) fehlend.push("Gesamtkosten");
         if (!p.umlageschluessel) fehlend.push("Umlageschlüssel");
+        // Zum Schlüssel gehören seine Werte: ohne Gesamtmenge und eigenen Anteil lässt sich nichts nachrechnen.
+        else if (p.umlageschluessel.typ !== "sonstig" && (p.umlageschluessel.anteilEinheit === undefined || p.umlageschluessel.anteilGesamt === undefined))
+          fehlend.push("Werte des Umlageschlüssels (Gesamtmenge und Ihr Anteil)");
         if (fehlend.length === 0) return [];
         return [
           {

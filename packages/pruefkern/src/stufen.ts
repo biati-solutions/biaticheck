@@ -1,5 +1,5 @@
 import { antworttyp, type Antworttyp } from "./antworten";
-import { datumDE, euro, monateZwischen, plusMonate, runde, tageInklusive, vergleiche, zahlDE } from "./hilfen";
+import { datumDE, euro, monateZwischen, plusMonate, plusTage, runde, tageInklusive, vergleiche, zahlDE } from "./hilfen";
 import { ALLE_REGELN, type Pruefbericht } from "./pruefung";
 import { einordnung, istBeanstandet, UNTERLAGEN, type Einordnung, type Regelergebnis, type Status, type Unterlage } from "./regel";
 import { Abrechnung, KOSTENKATEGORIEN, NICHT_UMLAGEFAEHIG, type AbrechnungEingabe, type Kostenkategorie } from "./schema";
@@ -128,6 +128,11 @@ export interface Stufe1 {
     /** Abrechnungsfrist des Vermieters (Ende Zeitraum + 12 Monate). */
     abrechnungsfrist: { status: "eingehalten" | "versaeumt" | "unbekannt"; bis?: string };
   };
+  /**
+   * Zahlungsfrist: 30 Tage nach Zugang (§ 286 Abs. 3 BGB). Bei einer Nachzahlung gerät danach der Mieter in Verzug,
+   * bei einem Guthaben der Vermieter. Ein Einwand gegen die Abrechnung schiebt die Fälligkeit nicht auf.
+   */
+  zahlungsfrist?: { art: "nachzahlung" | "guthaben"; bis: string; tageVerbleibend: number };
   /** 1.2 Kostenvergleich, Betriebskosten und Nachzahlung */
   kosten: {
     betriebskosten?: number;
@@ -150,6 +155,9 @@ export interface Stufe1 {
 
 /** Felder, die schon in Stufe 1 abgefragt werden – alle anderen Rückfragen gehören zu Stufe 2. */
 const STUFE1_FELDER = new Set(["meta.zugangAm", "meta.plz", "flaechen.wohnflaecheMieter"]);
+
+/** Zahlungsfrist für Nachzahlung bzw. Guthaben nach Zugang der Abrechnung (§ 286 Abs. 3 BGB). */
+export const ZAHLUNGSFRIST_TAGE = 30;
 
 const FRAGE_PLZ = { feld: "meta.plz", frage: "In welcher Postleitzahl liegt Ihre Wohnung? (für den regionalen Kostenvergleich)" };
 
@@ -178,6 +186,14 @@ export function erstelleStufe1(
     const bis = plusMonate(zugang, 12);
     const tage = vergleiche(heute, bis) > 0 ? 0 : tageInklusive(heute, bis) - 1;
     widerspruch = { status: vergleiche(heute, bis) > 0 ? "abgelaufen" : "offen", bis, tageVerbleibend: tage };
+  }
+
+  // Zahlungsfrist: 30 Tage nach Zugang. Ein Einwand gegen die Abrechnung schiebt die Fälligkeit nicht auf.
+  let zahlungsfrist: Stufe1["zahlungsfrist"];
+  const saldoAusgewiesen = a.ausgewiesen.saldo;
+  if (zugang && saldoAusgewiesen !== undefined && saldoAusgewiesen !== 0) {
+    const bis = plusTage(zugang, ZAHLUNGSFRIST_TAGE);
+    zahlungsfrist = { art: saldoAusgewiesen > 0 ? "nachzahlung" : "guthaben", bis, tageVerbleibend: vergleiche(heute, bis) > 0 ? 0 : tageInklusive(heute, bis) - 1 };
   }
 
   // Kosten
@@ -215,7 +231,7 @@ export function erstelleStufe1(
             : "Wir haben keinen belegten Fehler gefunden, aber Punkte, die Sie klären sollten."
           : stufe === "pruefbedarf"
             ? `Wir haben keinen belegten Fehler gefunden. Für ${z.anzahl.pruefbedarf === 1 ? "einen Punkt" : `${z.anzahl.pruefbedarf} Punkte`} fehlt noch eine Unterlage. Erst damit können wir sicher prüfen.`
-            : `Alle ${ALLE_REGELN.length} Prüfregeln sind ohne Fehler durchgelaufen.`,
+            : "Wir haben Ihre Abrechnung vollständig geprüft und keinen Fehler gefunden.",
     ...(saldo !== undefined && summe !== undefined && a.vorauszahlungen !== undefined
       ? { saldo: `So steht es in Ihrer Abrechnung: Ihre Kosten ${euro(summe)} minus Ihre Vorauszahlungen ${euro(a.vorauszahlungen)} = ${euro(Math.abs(saldo))} ${saldo >= 0 ? "Nachzahlung" : "Guthaben"}.` }
       : saldo !== undefined
@@ -252,6 +268,7 @@ export function erstelleStufe1(
       pruefbedarf: { anzahl: z.anzahl.pruefbedarf, betrag: z.pruefbedarfBetrag, ohneBetrag: z.pruefbedarfOhneBetrag },
     },
     widerspruchsfrist: { ...widerspruch, abrechnungsfrist },
+    ...(zahlungsfrist ? { zahlungsfrist } : {}),
     kosten: {
       betriebskosten,
       heizkosten,
@@ -333,9 +350,15 @@ export interface Stufe2 {
   /** Konkretes Ergebnis: korrigierte Nachzahlung, nächste Schritte mit Terminen, Belege, Steuerhinweis. */
   fahrplan: Fahrplan;
   anschreiben: { betreff: string; text: string };
+  /** Erinnerung, wenn die Hausverwaltung auf das Anschreiben nicht antwortet. Nur, wenn es etwas zu beanstanden gibt. */
+  nachfassschreiben?: { betreff: string; text: string };
+  /** Eigenes Schreiben, mit dem der Kunde Einsicht in die Belege verlangt. Nur, wenn Belege anzufordern sind. */
+  belegeinsicht?: { betreff: string; text: string };
   /** Unterlagen, die das Tool nachfordert, bevor es mögliche Fehler als sicher ausweist. */
   unterlagen: Unterlagenanforderung[];
 }
+
+const FRAGE_GEZAHLT = { feld: "meta.nachzahlungGezahlt", frage: "Haben Sie die Nachzahlung schon bezahlt?" };
 
 const REIHENFOLGE: Record<Exclude<Status, "ok">, number> = { abweichung: 0, auffaelligkeit: 1, pruefbedarf: 2, hinweis: 3, nicht_pruefbar: 4 };
 
@@ -370,19 +393,26 @@ export function erstelleStufe2(bericht: Pruefbericht, eingabe: AbrechnungEingabe
       };
     });
 
+  const offeneFragen = bericht.zusammenfassung.rueckfragen.filter((r) => !STUFE1_FELDER.has(r.feld));
+  const imBrief = auffaelligkeiten.filter((p) => gehoertInsAnschreiben(p, bericht));
+  const beanstandet = imBrief.some((p) => istBeanstandet(p.status));
+  // Eingangsfrage: Wer schon gezahlt hat, fordert zurück. Nur, wenn es etwas zu beanstanden gibt.
+  if (beanstandet && (a.ausgewiesen.saldo ?? 0) > 0 && a.meta.nachzahlungGezahlt === undefined) offeneFragen.push(FRAGE_GEZAHLT);
+  const fahrplan = erstelleFahrplan(stufe1, auffaelligkeiten, bericht, a);
+  const anschreiben = erstelleAnschreiben(a, imBrief, stufe1);
   return {
     auffaelligkeiten,
-    rueckfragen: bericht.zusammenfassung.rueckfragen
-      .filter((r) => !STUFE1_FELDER.has(r.feld))
-      .flatMap((r) => {
-        const typ = antworttyp(r.feld);
-        return typ ? [{ feld: r.feld, frage: r.frage, typ }] : [];
-      }),
+    rueckfragen: offeneFragen.flatMap((r) => {
+      const typ = antworttyp(r.feld);
+      return typ ? [{ feld: r.feld, frage: r.frage, typ }] : [];
+    }),
     zusammenfassung: erstelleZusammenfassung(stufe1, auffaelligkeiten),
     empfehlung: erstelleEmpfehlung(stufe1, auffaelligkeiten),
     unterlagen: sammleUnterlagen(auffaelligkeiten),
-    fahrplan: erstelleFahrplan(stufe1, auffaelligkeiten, bericht, a),
-    anschreiben: erstelleAnschreiben(a, auffaelligkeiten.filter((p) => gehoertInsAnschreiben(p, bericht)), stufe1),
+    fahrplan,
+    anschreiben,
+    ...(beanstandet ? { nachfassschreiben: erstelleNachfassschreiben(a, anschreiben, stufe1) } : {}),
+    ...(fahrplan.belege.length ? { belegeinsicht: erstelleBelegeinsicht(a, fahrplan.belege, stufe1) } : {}),
   };
 }
 
@@ -420,8 +450,8 @@ export function erstelleZusammenfassung(s1: Stufe1, punkte: Auffaelligkeit[]): s
   const und = (xs: string[]) => xs.join(", ").replace(/, ([^,]*)$/, " und $1");
   saetze.push(
     teile.length
-      ? `Wir haben Ihre Abrechnung${jahr} anhand von ${ALLE_REGELN.length} Prüfregeln untersucht und dabei ${und(teile)} festgestellt.`
-      : `Wir haben Ihre Abrechnung${jahr} anhand von ${ALLE_REGELN.length} Prüfregeln untersucht und keine Fehler festgestellt.`,
+      ? `Wir haben Ihre Abrechnung${jahr} geprüft und dabei ${und(teile)} festgestellt.`
+      : `Wir haben Ihre Abrechnung${jahr} geprüft und keine Fehler festgestellt.`,
   );
   if (zusatz.length) saetze.push(`Außerdem gibt es ${und(zusatz)}.`);
 
@@ -514,6 +544,7 @@ export function kurzfassung(e: Regelergebnis, a: Abrechnung): { titel: string; s
 
   switch (e.regelId) {
     case "F-01":
+      if (s === "auffaelligkeit") return k("Abrechnung zu früh erstellt", "Sie wurde erstellt, bevor der Abrechnungszeitraum zu Ende war.");
       return s === "abweichung" ? k("Zeitraum zu lang", "Eine Abrechnung darf höchstens 12 Monate umfassen.") : k("Zeitraum fehlt", "Der Abrechnungszeitraum ist nicht erkennbar.");
     case "F-02":
       if (s === "abweichung") return k("Abrechnung kam zu spät", "Eine Nachzahlung müssen Sie deshalb nicht leisten.");
@@ -527,7 +558,20 @@ export function kurzfassung(e: Regelergebnis, a: Abrechnung): { titel: string; s
       return k(`Angaben fehlen: ${name}`, "Gesamtkosten oder Verteilung sind nicht angegeben.");
     case "F-05":
       return k("Pauschale vereinbart", "Bei einer Pauschale darf nicht nachberechnet werden.");
+    case "R-10":
+      return s === "nicht_pruefbar" ? k("Zähler beim Umzug abgelesen?", "Verbrauchskosten dürfen nur für Ihre Mietzeit berechnet werden.") : k("Keine Ablesung beim Umzug", "Ihr Verbrauch ist dann nur geschätzt.");
+    case "R-11":
+      return b.art === "wohnflaeche" ? k("Wohnfläche größer als im Vorjahr", "Ohne Umbau ändert sich die Wohnfläche nicht.") : k("Gesamtfläche kleiner als im Vorjahr", "Eine kleinere Gesamtfläche erhöht Ihren Anteil an den Kosten.");
+    case "R-12":
+      return k("Anders verteilt als im Mietvertrag", "Die Kosten müssen nach dem vereinbarten Schlüssel verteilt werden.");
+    case "I-19":
+      return s === "abweichung" ? k("CO₂-Kosten nicht ausgewiesen", "Sie dürfen Ihre Heizkosten um 3 % kürzen.") : k("CO₂-Kosten nicht ausgewiesen", "Die Angaben sind Pflicht. Fehlen sie, ist eine Kürzung um 3 % möglich.");
+    case "I-20":
+      return s === "abweichung" ? k(`Keine laufenden Kosten: ${name}`, "Anschaffungen und einmalige Maßnahmen zahlt der Vermieter.") : k(`Einmalige Kosten? ${name}`, "Erlaubt sind nur Kosten, die regelmäßig anfallen.");
+    case "I-21":
+      return k(`Nicht im Mietvertrag: ${name}`, "Ihr Mietvertrag legt diese Kostenart nicht auf Sie um.");
     case "R-01":
+      if (b.verbrauch === true) return k(`Anteil unklar: ${name}`, "Nach Ihrem Verbrauch ergibt sich ein kleinerer Betrag.");
       return s === "abweichung" ? k(`Rechenfehler: ${name}`, "Ihr Anteil ist falsch berechnet.") : k("Anteile nicht nachrechenbar", "Gesamtkosten oder Verteilung fehlen.");
     case "R-02":
       return k("Summe falsch addiert", "Die Einzelposten ergeben eine andere Summe.");
@@ -566,6 +610,7 @@ export function kurzfassung(e: Regelergebnis, a: Abrechnung): { titel: string; s
     case "I-03":
       return k(`Unklar: ${name}`, "Es ist nicht erkennbar, wofür diese Kosten sind.");
     case "I-04":
+      if (b.warmwasser === true) return k("Warmwasser nicht nach Verbrauch abgerechnet", "Sie dürfen die Warmwasserkosten um 15 % kürzen.");
       if (s === "abweichung") return k("Heizung nicht nach Verbrauch abgerechnet", "Sie dürfen Ihren Anteil um 15 % kürzen.");
       if (s === "nicht_pruefbar") return k("Heizkostenabrechnung fehlt", "Ohne sie lassen sich die Heizkosten nicht prüfen.");
       return k("Heizkosten ungewöhnlich verteilt", "Der Anteil nach Verbrauch liegt außerhalb des Üblichen.");
@@ -658,7 +703,41 @@ export function briefpunkt(e: Regelergebnis, a: Abrechnung): string {
       if (e.status === "abweichung" && typeof b.stichtag === "string" && typeof b.fristEnde === "string")
         return `Die Abrechnung ist mir erst am ${datumDE(b.stichtag)} zugegangen, nach Ablauf der Abrechnungsfrist am ${datumDE(b.fristEnde)}. Eine Nachforderung ist daher ausgeschlossen.`;
       break;
+    case "F-01":
+      if (e.status === "auffaelligkeit" && typeof b.erstelltAm === "string" && typeof b.bis === "string")
+        return `Die Abrechnung ist auf den ${datumDE(b.erstelltAm)} datiert, der Abrechnungszeitraum endet aber erst am ${datumDE(b.bis)}. Bitte klären Sie Zeitraum und Datum und teilen Sie mit, ob Kosten geschätzt wurden.`;
+      break;
+    case "R-10":
+      if (e.status === "auffaelligkeit") return "Zu meinem Ein- bzw. Auszug wurden die Zähler nicht abgelesen. Bitte erläutern Sie, wie mein Verbrauch ermittelt und von dem der Vor- bzw. Nachmieter abgegrenzt wurde.";
+      break;
+    case "R-11": {
+      const jetzt = zahl(b.jetzt), vj = zahl(b.vorjahr);
+      if (jetzt === undefined || vj === undefined) break;
+      return b.art === "wohnflaeche"
+        ? `Für meine Wohnung werden ${zahlDE(jetzt)} m² angesetzt, im Vorjahr waren es ${zahlDE(vj)} m². Bitte begründen Sie die Änderung und legen Sie eine Wohnflächenberechnung vor${betrag}.`
+        : `Die Abrechnung setzt eine Gesamtfläche von ${zahlDE(jetzt)} m² an, im Vorjahr waren es ${zahlDE(vj)} m². Bitte erläutern Sie die Änderung und legen Sie eine Flächenaufstellung vor; der Anteil leer stehender Flächen ist vom Vermieter zu tragen${betrag}.`;
+    }
+    case "R-12": {
+      const ids = Array.isArray(b.positionen) ? (b.positionen as string[]) : [];
+      const namen = a.kostenpositionen.filter((x) => ids.includes(x.id)).map((x) => x.bezeichnung).join(", ");
+      return `Folgende Positionen werden nicht nach dem im Mietvertrag maßgeblichen Verteilerschlüssel umgelegt: ${namen}. Bitte rechnen Sie nach dem vereinbarten Schlüssel ab oder begründen Sie die Abweichung.`;
+    }
+    case "I-19":
+      return e.status === "abweichung"
+        ? `Die Heizkostenabrechnung weist die CO₂-Kosten und die Einstufung des Gebäudes nicht aus. Ich kürze meinen Heizkostenanteil um 3 %${betrag}.`
+        : "Die Heizkostenabrechnung weist die CO₂-Kosten und die Einstufung des Gebäudes nicht aus. Bitte reichen Sie diese Angaben nach.";
+    case "I-20":
+      if (name)
+        return e.status === "abweichung"
+          ? `${name}${betrag}: Es handelt sich nicht um laufende Kosten; sie sind nicht umlagefähig.`
+          : `${name}: Bitte legen Sie die Rechnung vor und erläutern Sie, ob diese Kosten regelmäßig anfallen.`;
+      break;
+    case "I-21":
+      if (name) return `${name}${betrag}: Diese Kostenart ist im Mietvertrag nicht auf mich umgelegt.`;
+      break;
     case "R-01":
+      if (b.verbrauch === true && name && zahl(b.erwartet) !== undefined && zahl(b.berechnet) !== undefined)
+        return `${name}: Nach meinem Verbrauch ergeben sich ${euro(zahl(b.erwartet)!)}, berechnet wurden ${euro(zahl(b.berechnet)!)}. Bitte erläutern Sie die Berechnung.`;
       if (name && zahl(b.erwartet) !== undefined && zahl(b.berechnet) !== undefined)
         return `${name}: Nach dem angegebenen Verteilerschlüssel ergeben sich ${euro(zahl(b.erwartet)!)}, berechnet wurden ${euro(zahl(b.berechnet)!)}.`;
       break;
@@ -691,6 +770,10 @@ export function briefpunkt(e: Regelergebnis, a: Abrechnung): string {
       if (name) return `${name}${betrag}: Diese Kostenart ist im Mietvertrag nicht als sonstige Betriebskosten vereinbart.`;
       break;
     case "I-04":
+      if (b.warmwasser === true)
+        return e.status === "abweichung"
+          ? `Mein Warmwasserverbrauch wurde nicht erfasst. Ich kürze die Warmwasserkosten um 15 %${betrag}.`
+          : "Mein Warmwasserverbrauch wurde nicht erfasst. Bitte nennen Sie meinen Anteil an den Warmwasserkosten; er ist um 15 % zu kürzen.";
       if (e.status === "abweichung") return `Meine Heizkosten wurden nicht nach Verbrauch abgerechnet. Ich kürze meinen Anteil um 15 %${betrag}.`;
       return "Bitte erläutern Sie den gewählten Verteilerschlüssel der Heizkosten.";
     case "I-05":
@@ -790,6 +873,14 @@ export function erstelleAnschreiben(a: Abrechnung, punkte: Auffaelligkeit[], s1:
     klaeren.forEach((p, i) => zeilen.push(`${i + 1}. ${p.brief}`));
   }
   if (!fehler.length && !klaeren.length) zeilen.push("", "Bitte senden Sie mir die zugehörigen Belege zur Einsicht.");
+  if ((a.ausgewiesen.saldo ?? 0) > 0 && (fehler.length || klaeren.length)) {
+    zeilen.push(
+      "",
+      a.meta.nachzahlungGezahlt === true
+        ? "Die Nachzahlung habe ich bereits geleistet. Die Zahlung ist kein Anerkenntnis der Abrechnung. Zu viel gezahlte Beträge bitte ich zu erstatten."
+        : "Eine Zahlung der Nachforderung erfolgt nur unter dem Vorbehalt der Rückforderung und ist kein Anerkenntnis der Abrechnung.",
+    );
+  }
   zeilen.push(
     "",
     "Bitte prüfen Sie die genannten Punkte und senden Sie mir innerhalb von 14 Tagen eine Stellungnahme bzw. eine korrigierte Abrechnung.",
@@ -801,6 +892,53 @@ export function erstelleAnschreiben(a: Abrechnung, punkte: Auffaelligkeit[], s1:
   );
   return { betreff: `Betriebskostenabrechnung ${jahr}${wohnung}: Einwände und Bitte um Belegeinsicht`, text: zeilen.join("\n") };
 }
+
+/** Erinnerung an das erste Schreiben, wenn die Hausverwaltung nicht antwortet. Das Datum des ersten Schreibens trägt der Kunde ein. */
+export function erstelleNachfassschreiben(a: Abrechnung, anschreiben: { betreff: string; text: string }, s1: Stufe1): { betreff: string; text: string } {
+  const z = a.meta.abrechnungszeitraum;
+  const zeitraum = z ? `${datumDE(z.von)} bis ${datumDE(z.bis)}` : "[Abrechnungszeitraum]";
+  const wohnung = a.meta.wohnung ? `, Wohnung ${a.meta.wohnung}` : "";
+  const f = s1.widerspruchsfrist;
+  const zeilen = [
+    "Sehr geehrte Damen und Herren,",
+    "",
+    `mit Schreiben vom [Datum Ihres ersten Schreibens] habe ich Einwände gegen die Betriebs- und Heizkostenabrechnung für den Zeitraum ${zeitraum} erhoben und um Einsicht in die Belege gebeten. Eine Antwort habe ich bisher nicht erhalten.`,
+    "",
+    "Ich halte meine Einwände aufrecht und bitte Sie erneut, innerhalb von 14 Tagen Stellung zu nehmen bzw. eine korrigierte Abrechnung zu senden und mir die Belege zugänglich zu machen.",
+  ];
+  if (f.status === "offen" && f.bis) zeilen.push("", `Meine Einwände sind fristgerecht erhoben; die Einwendungsfrist läuft bis zum ${datumDE(f.bis)}.`);
+  zeilen.push("", "Sollte ich weiterhin keine Antwort erhalten, werde ich mich an einen Mieterverein oder eine Rechtsanwältin bzw. einen Rechtsanwalt wenden.", "", "Mit freundlichen Grüßen", "", "[Ihr Name]", `[Ihre Anschrift${wohnung}]`);
+  return { betreff: `Erinnerung: ${anschreiben.betreff}`, text: zeilen.join("\n") };
+}
+
+/** Schreiben, mit dem der Kunde Einsicht in die Belege verlangt (§ 259 BGB; elektronisch nach § 556 Abs. 4 BGB). */
+export function erstelleBelegeinsicht(a: Abrechnung, belege: string[], s1: Stufe1): { betreff: string; text: string } {
+  const z = a.meta.abrechnungszeitraum;
+  const zeitraum = z ? `${datumDE(z.von)} bis ${datumDE(z.bis)}` : "[Abrechnungszeitraum]";
+  const wohnung = a.meta.wohnung ? `, Wohnung ${a.meta.wohnung}` : "";
+  const zeilen = [
+    "Sehr geehrte Damen und Herren,",
+    "",
+    `zur Prüfung der Betriebs- und Heizkostenabrechnung für den Zeitraum ${zeitraum} bitte ich um Einsicht in folgende Unterlagen:`,
+    ...belege.map((b, i) => `${i + 1}. ${b}`),
+    "",
+    "Bitte stellen Sie mir die Unterlagen innerhalb von 14 Tagen elektronisch bereit oder nennen Sie mir einen Termin zur Einsicht.",
+    "",
+    "Mit freundlichen Grüßen",
+    "",
+    "[Ihr Name]",
+    `[Ihre Anschrift${wohnung}]`,
+  ];
+  return { betreff: `Betriebskostenabrechnung ${s1.abrechnungsjahr ?? "[Jahr]"}${wohnung}: Bitte um Belegeinsicht`, text: zeilen.join("\n") };
+}
+
+/** Worauf der Kunde bei jedem Beleg achtet. */
+export const BELEG_PRUEFLISTE: readonly string[] = [
+  "Zeitraum: Gehört die Rechnung zum Abrechnungszeitraum?",
+  "Leistung: Ist es eine laufende Leistung und keine Reparatur oder Anschaffung?",
+  "Betrag: Stimmt die Summe mit den Gesamtkosten in der Abrechnung überein?",
+  "Gutschriften: Wurden Erstattungen und Gutschriften abgezogen?",
+];
 
 // ---------- Persönliches Anschreiben ----------
 
@@ -883,6 +1021,9 @@ function belegFuer(e: Regelergebnis, a: Abrechnung): string | undefined {
     case "I-14": return "Grundsteuerbescheid 2025";
     case "P-01": return name && e.status !== "nicht_pruefbar" ? `Rechnungen zu „${name}“` : undefined;
     case "P-03": return "Rechnungen für Energie und Warmwasserbereitung";
+    case "R-10": return "Ableseprotokolle zu Ihrem Ein- oder Auszug";
+    case "R-11": return e.beleg?.art === "wohnflaeche" ? "Wohnflächenberechnung für Ihre Wohnung" : "Flächenaufstellung des Hauses";
+    case "I-19": return "CO₂-Angaben zur Heizkostenabrechnung";
   }
   return undefined;
 }
@@ -904,22 +1045,40 @@ export function erstelleFahrplan(s1: Stufe1, punkte: Auffaelligkeit[], bericht: 
 
   const zahlung = saldo !== undefined && saldo > 0 ? { laut: saldo, hoechstens: entfaellt ? 0 : runde(Math.max(0, saldo - sicher)), entfaellt } : undefined;
 
+  // Zahlungshinweis. Ein Einwand schiebt die Fälligkeit nicht auf (§ 286 Abs. 3 BGB): Standard ist die Zahlung unter
+  // Vorbehalt innerhalb der Zahlungsfrist. „Nicht bezahlen“ gibt es nur, wenn die Nachforderung insgesamt entfällt.
   const fristUnsicher = punkte.some((p) => p.regelId === "F-02" && p.status === "pruefbedarf");
-  if (zahlung && fristUnsicher) {
-    schritte.push({ titel: "Nachzahlung vorerst nicht bezahlen", text: "Möglicherweise kam die Abrechnung zu spät. Warten Sie mit der Zahlung, bis wir das mit Ihrer Vorjahresabrechnung bestätigt haben." });
+  const gezahlt = a.meta.nachzahlungGezahlt === true;
+  const zf = s1.zahlungsfrist;
+  const zahlenBis = zf?.art === "nachzahlung" && zf.tageVerbleibend > 0 ? zf.bis : undefined;
+  if (zahlung && gezahlt) {
+    if (zahlung.entfaellt) {
+      schritte.push({ titel: `${euro(zahlung.laut)} zurückfordern`, text: "Sie haben die Nachzahlung schon geleistet, schulden sie aber nicht. Die Zahlung ist keine Zustimmung. Mit dem Schreiben fordern Sie das Geld zurück." });
+    } else if (sicher > 0 || zuKlaeren > 0 || fristUnsicher) {
+      schritte.push({
+        titel: "Zu viel Gezahltes zurückfordern",
+        text: `Sie haben die Nachzahlung schon geleistet. Das ist keine Zustimmung zur Abrechnung.${sicher > 0 ? ` Die ${euro(sicher)} aus belegten Fehlern fordern Sie mit dem Schreiben zurück.` : " Bestätigen sich die offenen Punkte, fordern Sie den Betrag zurück."}`,
+      });
+    }
   } else if (zahlung?.entfaellt) {
     schritte.push({ titel: "Nachzahlung nicht bezahlen", text: `Die ${euro(zahlung.laut)} schulden Sie nicht. Das teilen Sie mit dem Schreiben mit.` });
+  } else if (zahlung && fristUnsicher) {
+    schritte.push({
+      titel: "Nachzahlung nur unter Vorbehalt zahlen",
+      text: "Möglicherweise kam die Abrechnung zu spät. Bis wir das mit Ihrer Vorjahresabrechnung bestätigt haben, zahlen Sie nur mit dem Vermerk „unter Vorbehalt“. So können Sie das Geld zurückfordern.",
+      bis: zahlenBis,
+    });
   } else if (zahlung && sicher > 0) {
     schritte.push({
-      titel: `Höchstens ${euro(zahlung.hoechstens)} statt ${euro(zahlung.laut)} zahlen`,
-      text: `Die ${euro(sicher)} aus eindeutigen Fehlern ziehen Sie ab.${zuKlaeren > 0 ? " Den Rest erst zahlen, wenn die offenen Punkte geklärt sind." : ""}`,
+      titel: "Nachzahlung unter Vorbehalt zahlen",
+      text: `Ein Einwand schiebt die Zahlung nicht auf. Zahlen Sie fristgerecht mit dem Vermerk „unter Vorbehalt“. Die ${euro(sicher)} aus belegten Fehlern fordern Sie mit dem Schreiben zurück. Richtig wären höchstens ${euro(zahlung.hoechstens)} statt ${euro(zahlung.laut)}.`,
+      bis: zahlenBis,
     });
-  } else if (zahlung && zuKlaeren >= 30) {
-    schritte.push({ titel: "Nachzahlung noch nicht bezahlen", text: "Warten Sie mit der Zahlung, bis die Hausverwaltung die Punkte geklärt und Ihnen die Belege gezeigt hat." });
   } else if (zahlung && zuKlaeren > 0) {
     schritte.push({
       titel: "Nachzahlung unter Vorbehalt zahlen",
-      text: `Die offenen Punkte betreffen nur bis zu ${euro(zuKlaeren)}. Zahlen Sie mit dem Vermerk „unter Vorbehalt“, dann können Sie zu viel Gezahltes zurückfordern.`,
+      text: `Ein Einwand schiebt die Zahlung nicht auf. Zahlen Sie fristgerecht mit dem Vermerk „unter Vorbehalt“. Bestätigen sich die offenen Punkte, fordern Sie bis zu ${euro(zuKlaeren)} zurück.`,
+      bis: zahlenBis,
     });
   }
 
@@ -935,7 +1094,7 @@ export function erstelleFahrplan(s1: Stufe1, punkte: Auffaelligkeit[], bericht: 
   if (belege.length) schritte.push({ titel: "Belege einsehen", text: `Die Hausverwaltung muss Ihnen ${belege.length === 1 ? "eine Unterlage" : `${belege.length} Unterlagen`} zeigen. Wir haben sie im Schreiben angefordert.` });
 
   if (beanstandet.length || entfaellt) {
-    schritte.push({ titel: "Antwort abwarten", text: "Die Hausverwaltung hat 14 Tage Zeit. Kommt keine Antwort oder eine Ablehnung, übernehmen unsere Experten." });
+    schritte.push({ titel: "Antwort abwarten", text: "Die Hausverwaltung hat 14 Tage Zeit. Kommt keine Antwort, senden Sie das vorbereitete Erinnerungsschreiben. Lehnt sie ab, übernehmen unsere Experten. Auch ein Mieterverein oder eine Anwältin kann helfen." });
   }
 
   const mietvertragOffen = a.mietvertrag ? 0 : punkte.filter((p) => p.status === "nicht_pruefbar" && (p.regelId === "I-02" || p.regelId === "I-06")).length;
@@ -1111,8 +1270,20 @@ export function fakten(e: Regelergebnis, a: Abrechnung): Fakt[] {
       add("Im Mietvertrag vereinbart", Array.isArray(b.vereinbart) ? ((b.vereinbart as string[]).join(", ") || "keine sonstigen Kosten") : "noch nicht bekannt");
       if (e.status === "abweichung" && e.betragZugunstenMieter) add("Zu Ihren Gunsten", euro(e.betragZugunstenMieter), true);
       break;
-    case "I-04":
+    case "I-19":
       add("Ihre Heizkosten", eur(b.anteilMieter));
+      if (e.betragZugunstenMieter) add("Kürzung um 3 %", euro(e.betragZugunstenMieter), true);
+      break;
+    case "R-11": {
+      const einheit = (v: unknown) => (zahl(v) !== undefined ? `${zahlDE(zahl(v)!)} m²` : undefined);
+      add(b.art === "wohnflaeche" ? "Wohnfläche im Vorjahr" : "Gesamtfläche im Vorjahr", einheit(b.vorjahr));
+      add(b.art === "wohnflaeche" ? "Wohnfläche jetzt" : "Gesamtfläche jetzt", einheit(b.jetzt), true);
+      add("Nach Fläche verteilte Kosten", eur(b.flaechenKosten));
+      if (e.betragZugunstenMieter) add("Mögliche Ersparnis", `bis zu ${euro(e.betragZugunstenMieter)}`, true);
+      break;
+    }
+    case "I-04":
+      add(b.warmwasser === true ? "Ihre Warmwasserkosten" : "Ihre Heizkosten", eur(b.anteilMieter));
       if (zahl(b.kuerzung) !== undefined) add("Kürzung um 15 %", eur(b.kuerzung), true);
       if (zahl(b.verbrauchsanteilProzent) !== undefined) add("Anteil nach Verbrauch", `${zahlDE(zahl(b.verbrauchsanteilProzent)!, 0)} % (üblich 50–70 %)`, true);
       break;

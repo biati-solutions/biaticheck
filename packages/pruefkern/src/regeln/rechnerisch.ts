@@ -34,19 +34,31 @@ export const R01_Positionsanteil: Regel = {
 
     for (const p of a.kostenpositionen) {
       const s = p.umlageschluessel;
-      if (
-        p.gesamtkosten === undefined ||
-        !s ||
-        !ZEITANTEILIGE_SCHLUESSEL.has(s.typ) ||
-        s.anteilEinheit === undefined ||
-        s.anteilGesamt === undefined
-      ) {
+      const nachVerbrauch = s?.typ === "verbrauch";
+      if (p.gesamtkosten === undefined || !s || (!ZEITANTEILIGE_SCHLUESSEL.has(s.typ) && !nachVerbrauch) || s.anteilEinheit === undefined || s.anteilGesamt === undefined) {
         continue;
       }
       geprueft++;
-      const erwartet = runde((p.gesamtkosten * s.anteilEinheit) / s.anteilGesamt * faktorZeit);
+      // Der Verbrauch ist schon nur für die eigene Nutzungszeit erfasst – kein zusätzlicher Zeitanteil.
+      const erwartet = runde((p.gesamtkosten * s.anteilEinheit) / s.anteilGesamt * (nachVerbrauch ? 1 : faktorZeit));
       const differenz = runde(p.anteilMieter - erwartet);
       if (Math.abs(differenz) <= einstellungen.toleranzEuro) continue;
+
+      // Verbrauchspositionen können einen festen Grundpreis enthalten, der anders verteilt wird. Eine Abweichung ist
+      // deshalb kein belegter Fehler, sondern zu klären – und nur, wenn zu viel berechnet wurde.
+      if (nachVerbrauch) {
+        if (differenz > 0)
+          befunde.push({
+            status: "auffaelligkeit",
+            titel: `Anteil nicht nachvollziehbar: ${p.bezeichnung}`,
+            erklaerung: `Nach Ihrem Verbrauch (${zahlDE(s.anteilEinheit)} von ${zahlDE(s.anteilGesamt)}) ergeben sich ${euro(erwartet)}, berechnet wurden ${euro(p.anteilMieter)} – bis zu ${euro(differenz)} mehr. Das kann an einem Grundpreis liegen, der anders verteilt wird, muss aber erklärt werden.`,
+            naechsterSchritt: "Lassen Sie sich die Berechnung dieser Position erläutern.",
+            betragZugunstenMieter: differenz,
+            positionId: p.id,
+            beleg: { gesamtkosten: p.gesamtkosten, schluessel: s, erwartet, berechnet: p.anteilMieter, differenz, verbrauch: true },
+          });
+        continue;
+      }
 
       befunde.push({
         status: "abweichung",
@@ -711,4 +723,148 @@ export const R09_Belegabgleich: Regel = {
   },
 };
 
-export const RECHNERISCHE_REGELN = [R01_Positionsanteil, R02_Gesamtsumme, R03_Saldo, R04_Flaechen, R05_Vorauszahlungen, R06_EinAuszug, R07_WohnflaecheMietvertrag, R08_Zaehlerstaende, R09_Belegabgleich];
+/**
+ * R-10 Verbrauchskosten bei Ein- oder Auszug: Heizung, Warmwasser und Wasser nach Verbrauch dürfen nur für die eigene
+ * Mietzeit berechnet werden. Dafür braucht es eine Zwischenablesung (§ 9b HeizkostenV); ohne sie wird geschätzt.
+ */
+export const R10_Zwischenablesung: Regel = {
+  id: "R-10",
+  version: "1.0.0",
+  titel: "Verbrauch bei Ein- oder Auszug abgelesen",
+  bereich: "rechnerisch",
+  grundlage: "§ 9b HeizkostenV; § 556a Abs. 1 BGB",
+  stand: "entwurf",
+  pruefe(a) {
+    const z = a.meta.abrechnungszeitraum;
+    if (!z) return [];
+    const mv = a.mietvertrag;
+    const n = a.meta.nutzungszeitraum;
+    const von = [n?.von, mv?.mietbeginn].filter((d): d is string => !!d && d > z.von).sort().at(-1);
+    const bis = [n?.bis, mv?.mietende].filter((d): d is string => !!d && d < z.bis).sort().at(0);
+    if (!von && !bis) return [];
+    const verbrauch = a.kostenpositionen.some((p) => p.umlageschluessel?.typ === "verbrauch") || !!a.heizkosten;
+    if (!verbrauch) return [];
+    const abgelesen = a.meta.zwischenablesung;
+    if (abgelesen === true) return [{ status: "ok", titel: "Zwischenablesung erfolgt", erklaerung: "Zu Ihrem Ein- oder Auszug wurden die Zähler abgelesen." }];
+    if (abgelesen === false) {
+      return [
+        {
+          status: "auffaelligkeit",
+          titel: "Keine Zwischenablesung bei Ein- oder Auszug",
+          erklaerung: "Sie sind im Abrechnungszeitraum ein- oder ausgezogen, die Zähler wurden zum Wechsel aber nicht abgelesen. Ihr Verbrauch ist dann nur geschätzt und kann den Verbrauch der Vor- oder Nachmieter enthalten.",
+          naechsterSchritt: "Verlangen Sie eine Erläuterung, wie Ihr Verbrauch vom Verbrauch der Vor- oder Nachmieter getrennt wurde.",
+          beleg: { von, bis },
+        },
+      ];
+    }
+    return [
+      {
+        status: "nicht_pruefbar",
+        titel: "Zähler bei Ein- oder Auszug abgelesen?",
+        erklaerung: "Bei einem Ein- oder Auszug im Abrechnungszeitraum dürfen Verbrauchskosten nur für Ihre Mietzeit berechnet werden. Dafür müssen die Zähler zum Wechsel abgelesen worden sein.",
+        naechsterSchritt: "Beantworten Sie die Frage, ob die Zähler abgelesen wurden.",
+        rueckfrage: { feld: "meta.zwischenablesung", frage: "Wurden bei Ihrem Ein- oder Auszug die Zähler für Heizung und Wasser abgelesen?" },
+      },
+    ];
+  },
+};
+
+/** Ab welcher Abweichung der Flächen gegenüber dem Vorjahr eine Erklärung nötig ist (1 %). */
+const FLAECHEN_TOLERANZ_VORJAHR = 0.01;
+
+/**
+ * R-11 Flächen gegenüber dem Vorjahr: Eine kleinere Gesamtfläche oder eine größere Wohnfläche erhöht den Anteil
+ * des Mieters. Ohne Erklärung ist das zu klären (kleinere Gesamtfläche: typisch bei herausgerechnetem Leerstand,
+ * BGH VIII ZR 159/05). Änderungen zugunsten des Mieters werden nicht gemeldet.
+ */
+export const R11_FlaechenVorjahr: Regel = {
+  id: "R-11",
+  version: "1.0.0",
+  titel: "Flächen wie im Vorjahr",
+  bereich: "rechnerisch",
+  grundlage: "§ 556a Abs. 1 BGB; BGH, Urt. v. 31.05.2006 – VIII ZR 159/05",
+  stand: "entwurf",
+  pruefe(a) {
+    const vj = a.vorjahr?.flaechen;
+    if (!vj) return [];
+    const flaechenKosten = runde(a.kostenpositionen.filter((p) => p.umlageschluessel?.typ === "wohnflaeche").reduce((x, p) => x + p.anteilMieter, 0));
+    const befunde: Befund[] = [];
+    let verglichen = 0;
+
+    const gesamt = a.flaechen.gesamtflaeche;
+    if (gesamt !== undefined && vj.gesamtflaeche !== undefined) {
+      verglichen++;
+      if ((vj.gesamtflaeche - gesamt) / vj.gesamtflaeche > FLAECHEN_TOLERANZ_VORJAHR) {
+        const zuViel = runde(flaechenKosten * (1 - gesamt / vj.gesamtflaeche));
+        befunde.push({
+          status: "auffaelligkeit",
+          titel: "Gesamtfläche kleiner als im Vorjahr",
+          erklaerung: `Die Abrechnung rechnet mit ${zahlDE(gesamt)} m² Gesamtfläche, im Vorjahr waren es ${zahlDE(vj.gesamtflaeche)} m². Eine kleinere Gesamtfläche erhöht Ihren Anteil. Werden leer stehende Flächen herausgerechnet, zahlen die übrigen Mieter deren Anteil mit – den trägt aber der Vermieter.`,
+          naechsterSchritt: "Fragen Sie nach dem Grund der Änderung und verlangen Sie eine Flächenaufstellung des Hauses.",
+          betragZugunstenMieter: zuViel > 0 ? zuViel : undefined,
+          beleg: { art: "gesamtflaeche", jetzt: gesamt, vorjahr: vj.gesamtflaeche, flaechenKosten, zuViel },
+        });
+      }
+    }
+    const wohn = a.flaechen.wohnflaecheMieter;
+    if (wohn !== undefined && vj.wohnflaecheMieter !== undefined) {
+      verglichen++;
+      if ((wohn - vj.wohnflaecheMieter) / vj.wohnflaecheMieter > FLAECHEN_TOLERANZ_VORJAHR) {
+        const zuViel = runde(flaechenKosten * (1 - vj.wohnflaecheMieter / wohn));
+        befunde.push({
+          status: "auffaelligkeit",
+          titel: "Wohnfläche größer als im Vorjahr",
+          erklaerung: `Für Ihre Wohnung werden ${zahlDE(wohn)} m² angesetzt, im Vorjahr waren es ${zahlDE(vj.wohnflaecheMieter)} m². Ohne Umbau ändert sich die Wohnfläche nicht.`,
+          naechsterSchritt: "Fragen Sie nach dem Grund der Änderung und verlangen Sie eine Wohnflächenberechnung.",
+          betragZugunstenMieter: zuViel > 0 ? zuViel : undefined,
+          beleg: { art: "wohnflaeche", jetzt: wohn, vorjahr: vj.wohnflaecheMieter, flaechenKosten, zuViel },
+        });
+      }
+    }
+    if (befunde.length > 0) return befunde;
+    if (verglichen === 0) return [];
+    return [{ status: "ok", titel: "Flächen wie im Vorjahr", erklaerung: "Die Flächen sind gegenüber der Abrechnung des Vorjahres nicht zu Ihren Lasten verändert." }];
+  },
+};
+
+const SCHLUESSEL_NAME: Record<string, string> = { wohnflaeche: "Wohnfläche", personen: "Personenzahl", einheiten: "Wohneinheiten", miteigentumsanteil: "Miteigentumsanteile" };
+const HEIZKATEGORIEN = ["heizung", "warmwasser", "verbundene_anlagen"];
+
+/**
+ * R-12 Verteilerschlüssel laut Mietvertrag: Der Vermieter muss den vereinbarten Schlüssel anwenden. Ist nichts
+ * vereinbart, gilt die Wohnfläche. Nach Verbrauch erfasste oder direkt zugeordnete Kosten und Heizkosten
+ * (HeizkostenV) sind ausgenommen.
+ */
+export const R12_SchluesselMietvertrag: Regel = {
+  id: "R-12",
+  version: "1.0.0",
+  titel: "Verteilerschlüssel wie im Mietvertrag",
+  bereich: "rechnerisch",
+  grundlage: "§ 556a Abs. 1 BGB",
+  stand: "entwurf",
+  pruefe(a) {
+    const vereinbart = a.mietvertrag?.umlageschluessel;
+    if (!vereinbart) return [];
+    const soll = vereinbart === "keine" ? "wohnflaeche" : vereinbart;
+    const geprueft = a.kostenpositionen.filter((p) => p.umlageschluessel && !["verbrauch", "direkt", "sonstig"].includes(p.umlageschluessel.typ) && !HEIZKATEGORIEN.includes(p.kategorie));
+    if (geprueft.length === 0) return [];
+    const abweichend = geprueft.filter((p) => p.umlageschluessel!.typ !== soll);
+    if (abweichend.length === 0) return [{ status: "ok", titel: "Verteilerschlüssel wie vereinbart", erklaerung: `Die Kosten werden wie vereinbart nach ${SCHLUESSEL_NAME[soll]} verteilt.` }];
+    const namen = abweichend.map((p) => `„${p.bezeichnung}“`).join(", ");
+    const summe = runde(abweichend.reduce((x, p) => x + p.anteilMieter, 0));
+    return [
+      {
+        status: "auffaelligkeit",
+        titel: "Anderer Verteilerschlüssel als im Mietvertrag",
+        erklaerung:
+          (vereinbart === "keine" ? "Ihr Mietvertrag legt keinen Verteilerschlüssel fest. Dann sind die Betriebskosten nach der Wohnfläche zu verteilen. " : `Ihr Mietvertrag sieht eine Verteilung nach ${SCHLUESSEL_NAME[soll]} vor. `) +
+          `Abweichend verteilt werden ${namen} (zusammen ${euro(summe)}).`,
+        naechsterSchritt: "Verlangen Sie eine Abrechnung nach dem vereinbarten Verteilerschlüssel oder eine Begründung für die Abweichung.",
+        betroffen: summe,
+        beleg: { vereinbart, soll, positionen: abweichend.map((p) => p.id), summe },
+      },
+    ];
+  },
+};
+
+export const RECHNERISCHE_REGELN = [R01_Positionsanteil, R02_Gesamtsumme, R03_Saldo, R04_Flaechen, R05_Vorauszahlungen, R06_EinAuszug, R07_WohnflaecheMietvertrag, R08_Zaehlerstaende, R09_Belegabgleich, R10_Zwischenablesung, R11_FlaechenVorjahr, R12_SchluesselMietvertrag];
