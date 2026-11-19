@@ -25,8 +25,6 @@
   --gruen-tief: #178a69;
   --blau: #2e7bb8;
   --mint: #e8f5f0;
-  --nebel-1: #cdeadf;
-  --nebel-2: #d5e5f2;
   --warn-bg: #fcefd6;
   --warn-fg: #8a5a12;
   --offen-bg: #e9ece9;
@@ -45,7 +43,7 @@
   :root:not([data-theme="light"]) {
     --grund: #0a0e0c; --grund-alt: #0e1210; --flaeche: rgba(20, 26, 23, 0.88); --text: #e8f0ec; --gedaempft: #99b2a7;
     --linie: rgba(255, 255, 255, 0.1); --gruen: #22c08f; --gruen-tief: #1fa37e; --blau: #3e96d4; --mint: #12241d;
-    --nebel-1: #0f3a2c; --nebel-2: #102a3d; --warn-bg: #3a2c12; --warn-fg: #f2c66d; --offen-bg: #222a26; --offen-fg: #b8c9c1;
+    --warn-bg: #3a2c12; --warn-fg: #f2c66d; --offen-bg: #222a26; --offen-fg: #b8c9c1;
     --ok-bg: #133428; --ok-fg: #7fe0bd; --fehler-bg: #3b1618; --fehler-fg: #ffb3b3; --dunkelkarte: #141a17; --dunkelkarte-text: #e8f0ec;
     --schatten: 0 40px 80px -36px rgba(0, 0, 0, 0.7), 0 10px 24px -14px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
@@ -54,7 +52,7 @@
 :root[data-theme="dark"] {
   --grund: #0a0e0c; --grund-alt: #0e1210; --flaeche: rgba(20, 26, 23, 0.88); --text: #e8f0ec; --gedaempft: #99b2a7;
   --linie: rgba(255, 255, 255, 0.1); --gruen: #22c08f; --gruen-tief: #1fa37e; --blau: #3e96d4; --mint: #12241d;
-  --nebel-1: #0f3a2c; --nebel-2: #102a3d; --warn-bg: #3a2c12; --warn-fg: #f2c66d; --offen-bg: #222a26; --offen-fg: #b8c9c1;
+  --warn-bg: #3a2c12; --warn-fg: #f2c66d; --offen-bg: #222a26; --offen-fg: #b8c9c1;
   --ok-bg: #133428; --ok-fg: #7fe0bd; --fehler-bg: #3b1618; --fehler-fg: #ffb3b3; --dunkelkarte: #141a17; --dunkelkarte-text: #e8f0ec;
   --schatten: 0 40px 80px -36px rgba(0, 0, 0, 0.7), 0 10px 24px -14px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
@@ -125,16 +123,6 @@ h1, h2, h3 {
   outline: 3px solid var(--gruen);
   outline-offset: 3px;
 }
-
-@keyframes schweben {
-  0%, 100% { translate: 0 0; }
-  50% { translate: 0 -10px; }
-}
-@keyframes laufband {
-  to { transform: translateX(-50%); }
-}
-.schweben { animation: schweben 8s ease-in-out infinite; }
-.laufband { animation: laufband 50s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

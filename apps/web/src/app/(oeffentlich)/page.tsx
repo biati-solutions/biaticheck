@@ -1,97 +1,86 @@
-import { ALLE_REGELN } from "@biaticheck/pruefkern";
-import { ErklaerVideo } from "@/komponenten/ErklaerVideo";
-import { HeldSzene } from "@/komponenten/HeldSzene";
 import { Hochladen } from "@/komponenten/Hochladen";
+import { MINDESTERSPARNIS, PREIS } from "@/server/ansicht";
 
-const LAUFBAND = [
-  ["§ 556 BGB", "Abrechnungsfrist 12 Monate"],
-  ["§ 2 BetrKV", "17 umlagefähige Kostenarten"],
-  ["HeizkostenV", "50–70 % nach Verbrauch"],
-  ["CO2KostAufG", "Stufenmodell für CO₂-Kosten"],
-  ["§ 230 TKG", "Kabel-TV nur bis 30.06.2024"],
-  ["§ 556a BGB", "Verteilung nach Fläche oder Verbrauch"],
+const euro = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
+
+/** Was geprüft wird – in der Sprache der Mieter, ohne Paragraphen und ohne Zählerei. */
+const PRUEFPUNKTE = [
+  ["Fristen", "Kam die Abrechnung rechtzeitig? Wenn nicht, müssen Sie eine Nachzahlung oft gar nicht leisten."],
+  ["Rechenwege", "Wir rechnen Ihren Anteil an jeder Position nach und prüfen Summe und Nachzahlung."],
+  ["Verteilung", "Stimmen Wohnfläche und Verteilerschlüssel, und passen sie zum Vorjahr?"],
+  ["Kosten, die Sie nicht zahlen müssen", "Verwaltung, Reparaturen, Anschaffungen oder Versicherungen des Vermieters gehören nicht in die Abrechnung."],
+  ["Heizung und Warmwasser", "Wurde nach Verbrauch abgerechnet, und trägt der Vermieter seinen Teil der CO₂-Kosten?"],
+  ["Vorauszahlungen", "Sind alle Ihre Zahlungen vollständig angerechnet?"],
 ] as const;
 
 const SCHRITTE = [
-  ["Hochladen", "PDF oder Foto, inklusive Heizkostenabrechnung des Messdienstes."],
-  ["Prüfen", "Die KI liest die Zahlen aus, feste Regeln rechnen nach. Unklares prüft ein Experte."],
-  ["Ergebnis", "Kostenlose Erstauswertung. Auf Wunsch ausführlicher Bericht mit Erklärungen und nächsten Schritten."],
+  ["Abrechnung hochladen", "Als PDF oder Foto. Legen Sie die Heizkostenabrechnung dazu, wenn Sie eine bekommen haben."],
+  ["Wir prüfen", "Wir lesen Ihre Abrechnung aus und rechnen jede Position nach. Unklare Fälle sieht sich einer unserer Fachleute an."],
+  ["Ergebnis ansehen", "Sie sehen, welche Punkte auffallen und um wie viel Geld es geht. Auf Wunsch erhalten Sie ein fertiges Schreiben an Ihre Hausverwaltung."],
 ] as const;
 
-function Badge({ children }: { children: React.ReactNode }) {
+const FRAGEN = [
+  [
+    "Was kostet die Prüfung?",
+    `Die Prüfung und das Ergebnis sind kostenlos. Das fertige Schreiben an Ihre Hausverwaltung kostet ${euro(PREIS)} – aber nur, wenn wir mindestens ${euro(MINDESTERSPARNIS)} für Sie gefunden haben. Sonst ist auch das kostenlos.`,
+  ],
+  [
+    "Welche Unterlagen brauche ich?",
+    "Für den Anfang genügt die Abrechnung. Mit der Abrechnung des Vorjahres und Ihrem Mietvertrag können wir noch mehr Punkte prüfen. Danach fragen wir Sie nur, wenn es sich lohnt.",
+  ],
+  ["Wie lange dauert es?", "Meist etwa eine Minute. Schauen wir uns Ihre Abrechnung zusätzlich von Hand an, sehen Sie das Ergebnis unter Ihrem persönlichen Link, sobald es vorliegt."],
+  [
+    "Was passiert mit meinen Daten?",
+    "Ihre Abrechnung wird verschlüsselt gespeichert und nach 90 Tagen gelöscht. Sie brauchen kein Konto. Namen und Kontodaten aus der Abrechnung übernehmen wir nicht.",
+  ],
+  ["Ist das eine Rechtsberatung?", "Nein. Wir prüfen Ihre Abrechnung rechnerisch und nach allgemeinen Regeln. Bei einem Streit mit dem Vermieter helfen ein Mieterverein oder eine Anwältin."],
+] as const;
+
+function Haken() {
   return (
-    <span className="inline-flex items-center gap-2 justify-self-start rounded-full border border-gruen/30 bg-gruen/10 px-3.5 py-1.5 text-sm font-semibold text-gruen-tief before:size-[7px] before:rounded-full before:bg-gruen">
-      {children}
-    </span>
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mt-[3px] shrink-0 text-gruen" aria-hidden="true">
+      <path d="M4 10.5l4 4 8-9" />
+    </svg>
   );
 }
 
 export default function Startseite() {
   return (
     <>
-      <section className="relative overflow-hidden" aria-labelledby="titel">
-        <div className="pointer-events-none absolute -top-40 -left-44 size-[640px] rounded-full bg-[var(--nebel-1)] opacity-70 blur-[90px]" />
-        <div className="pointer-events-none absolute top-32 -right-52 size-[720px] rounded-full bg-[var(--nebel-2)] opacity-70 blur-[90px]" />
-        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-8 px-4 py-10 md:grid-cols-[1.05fr_1fr] md:py-16">
-          <div className="min-w-0">
-            <Badge>Nebenkostenprüfung von Biati Solutions</Badge>
-            <h1 id="titel" className="mt-5 text-[clamp(40px,6.4vw,76px)] leading-[1.02] font-extrabold">
-              {/* Feste Trennstelle: am Handy „Nebenkosten-/abrechnung“ statt automatischer Silbentrennung */}
-              Nebenkosten{"\u00AD"}abrechnung <span className="block text-gruen">sicher prüfen</span>
+      <section className="border-b border-linie bg-grund-alt" aria-labelledby="titel">
+        <div className="mx-auto grid w-full max-w-6xl items-start gap-10 px-4 py-10 md:grid-cols-[1fr_minmax(0,460px)] md:gap-14 md:py-16">
+          <div className="min-w-0 md:pt-4">
+            <p className="text-sm font-semibold text-gruen-tief">Nebenkostenprüfung von Biati Solutions</p>
+            <h1 id="titel" className="mt-3 text-[clamp(32px,4.6vw,52px)] leading-[1.08] font-bold">
+              Stimmt Ihre Nebenkosten{"­"}abrechnung?
             </h1>
-            <p className="mt-5 max-w-[34em] text-lg text-gedaempft">
-              Laden Sie Ihre Abrechnung hoch. BiatiCheck rechnet jede Position nach, prüft Fristen und umlagefähige Kosten und zeigt Ihnen, was Sie
-              klären sollten – nach den Regeln unserer Experten.
+            <p className="mt-4 max-w-[32em] text-lg text-gedaempft">
+              Laden Sie Ihre Abrechnung hoch. Wir rechnen nach und zeigen Ihnen, ob Sie zu viel zahlen – und was Sie dann tun können.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3.5">
-              <a href="#pruefen" className="inline-flex items-center gap-2 rounded-lg bg-gruen px-6 py-3.5 font-semibold text-white shadow-[0_14px_28px_-16px_rgba(31,163,126,0.8)] hover:bg-gruen-tief">
-                Kostenlos prüfen <span aria-hidden="true">→</span>
-              </a>
-              <a href="#ablauf" className="inline-flex items-center rounded-lg border border-linie bg-grund px-6 py-3.5 font-semibold">
-                So funktioniert&apos;s
-              </a>
-            </div>
-            <dl className="mt-10 grid grid-cols-3 gap-4 border-t border-linie pt-7">
-              {[
-                [String(ALLE_REGELN.length), "Prüfregeln aus BGB, BetrKV und HeizkostenV"],
-                ["0 €", "für die Erstauswertung"],
-                ["90 Tage", "dann wird Ihre Abrechnung gelöscht"],
-              ].map(([wert, text]) => (
-                <div key={text}>
-                  <dt className="text-2xl font-bold sm:text-[26px]">{wert}</dt>
-                  <dd className="text-sm text-gedaempft">{text}</dd>
-                </div>
+            <ul className="mt-7 grid gap-2.5 text-[15px]">
+              {["Kostenlos und ohne Konto", "Ergebnis meist nach einer Minute", "Fertiges Schreiben an die Hausverwaltung, wenn etwas nicht stimmt"].map((punkt) => (
+                <li key={punkt} className="flex gap-2.5">
+                  <Haken />
+                  {punkt}
+                </li>
               ))}
-            </dl>
+            </ul>
           </div>
-          <HeldSzene anzahlRegeln={ALLE_REGELN.length} />
+          <div id="pruefen" className="scroll-mt-24">
+            <Hochladen />
+          </div>
         </div>
       </section>
 
-      <div className="overflow-hidden bg-gruen text-sm font-medium text-white" aria-hidden="true">
-        <div className="laufband flex w-max gap-12 py-3">
-          {[...LAUFBAND, ...LAUFBAND].map(([gesetz, text], i) => (
-            <span key={i} className="whitespace-nowrap">
-              <b className="mr-1.5 font-bold">{gesetz}</b>
-              {text}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <section id="ablauf" className="scroll-mt-20 bg-grund-alt py-20" aria-labelledby="ablauf-titel">
+      <section id="ablauf" className="scroll-mt-20 py-16 md:py-20" aria-labelledby="ablauf-titel">
         <div className="mx-auto grid w-full max-w-6xl gap-8 px-4">
-          <div className="grid max-w-2xl gap-3.5">
-            <Badge>In 25 Sekunden erklärt</Badge>
-            <h2 id="ablauf-titel" className="text-[clamp(30px,4vw,46px)] leading-tight font-bold">
-              Hochladen, prüfen, Ergebnis erhalten
-            </h2>
-          </div>
-          <ErklaerVideo />
-          <ol className="grid gap-5 md:grid-cols-3">
+          <h2 id="ablauf-titel" className="text-[clamp(26px,3.2vw,36px)] leading-tight font-bold">
+            So läuft es ab
+          </h2>
+          <ol className="grid gap-8 md:grid-cols-3 md:gap-10">
             {SCHRITTE.map(([titel, text], i) => (
-              <li key={titel} className="grid content-start gap-2 rounded-2xl border border-linie bg-grund p-5">
-                <span className="grid size-9 place-items-center rounded-full bg-gruen font-bold text-white">{i + 1}</span>
+              <li key={titel} className="grid content-start gap-2 border-t-2 border-gruen pt-4">
+                <span className="text-sm font-semibold text-gruen-tief">Schritt {i + 1}</span>
                 <h3 className="text-lg font-bold">{titel}</h3>
                 <p className="text-[15px] text-gedaempft">{text}</p>
               </li>
@@ -100,40 +89,56 @@ export default function Startseite() {
         </div>
       </section>
 
-      <section id="pruefen" className="scroll-mt-20 py-20" aria-labelledby="pruefen-titel">
-        <div className="mx-auto grid w-full max-w-3xl gap-8 px-4">
-          <div className="grid gap-3.5">
-            <Badge>Kostenlose Erstauswertung</Badge>
-            <h2 id="pruefen-titel" className="text-[clamp(30px,4vw,46px)] leading-tight font-bold">
-              Abrechnung hochladen und prüfen lassen
-            </h2>
-            <p className="text-lg text-gedaempft">Sie erhalten einen persönlichen Link zu Ihrer Prüfung. Ein Konto brauchen Sie nicht.</p>
-          </div>
-          <Hochladen />
-        </div>
-      </section>
-
-      <section id="regeln" className="scroll-mt-20 bg-grund-alt py-20" aria-labelledby="regeln-titel">
+      <section id="inhalt" className="scroll-mt-20 border-y border-linie bg-grund-alt py-16 md:py-20" aria-labelledby="inhalt-titel">
         <div className="mx-auto grid w-full max-w-6xl gap-8 px-4">
-          <div className="grid max-w-2xl gap-3.5">
-            <Badge>Transparent</Badge>
-            <h2 id="regeln-titel" className="text-[clamp(30px,4vw,46px)] leading-tight font-bold">
-              Das prüft BiatiCheck
+          <div className="grid max-w-2xl gap-3">
+            <h2 id="inhalt-titel" className="text-[clamp(26px,3.2vw,36px)] leading-tight font-bold">
+              Das schauen wir uns an
             </h2>
-            <p className="text-lg text-gedaempft">Jede Regel hat eine feste ID und eine Rechtsgrundlage. So ist jedes Ergebnis nachvollziehbar.</p>
+            <p className="text-lg text-gedaempft">Die häufigsten Fehler in Nebenkostenabrechnungen – und die, die am meisten Geld kosten.</p>
           </div>
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
-            {ALLE_REGELN.map((r) => (
-              <li key={r.id} className="grid gap-1 rounded-xl border border-linie bg-grund px-4 py-3.5">
-                <code className="font-mono text-xs text-gruen-tief">{r.id}</code>
-                <b className="text-[15px] font-semibold">{r.titel}</b>
-                <span className="text-[13px] text-gedaempft">{r.grundlage}</span>
+          <ul className="grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+            {PRUEFPUNKTE.map(([titel, text]) => (
+              <li key={titel} className="flex gap-3">
+                <Haken />
+                <div className="grid content-start gap-1">
+                  <h3 className="font-semibold">{titel}</h3>
+                  <p className="text-[15px] text-gedaempft">{text}</p>
+                </div>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-gedaempft">
-            BiatiCheck prüft Ihre Abrechnung rechnerisch und anhand allgemeiner Regeln. Die Auswertung ersetzt keine Rechtsberatung im Einzelfall.
-          </p>
+        </div>
+      </section>
+
+      <section className="py-16 md:py-20" aria-labelledby="team-titel">
+        <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 md:grid-cols-[1fr_1.2fr] md:gap-14">
+          <div className="grid content-start gap-3">
+            <h2 id="team-titel" className="text-[clamp(26px,3.2vw,36px)] leading-tight font-bold">
+              Wer hinter BiatiCheck steht
+            </h2>
+            <p className="text-gedaempft">
+              BiatiCheck ist ein Angebot des Energieteams von Biati Solutions. Die Prüfung folgt dem, worauf unsere Fachleute bei Abrechnungen achten. Ist etwas
+              unklar, schaut sich ein Mensch Ihre Abrechnung an, bevor Sie das Ergebnis sehen.
+            </p>
+            <a href="#pruefen" className="mt-2 inline-flex justify-self-start rounded-lg bg-gruen px-5 py-3 font-semibold text-white hover:bg-gruen-tief">
+              Abrechnung hochladen
+            </a>
+          </div>
+          <div id="fragen" className="scroll-mt-24">
+            <h2 className="mb-2 text-lg font-bold">Häufige Fragen</h2>
+            {FRAGEN.map(([frage, antwort]) => (
+              <details key={frage} className="group border-b border-linie py-3.5">
+                <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4 font-semibold [&::-webkit-details-marker]:hidden">
+                  {frage}
+                  <span className="text-gedaempft transition-transform group-open:rotate-45" aria-hidden="true">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2 text-[15px] text-gedaempft">{antwort}</p>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
     </>

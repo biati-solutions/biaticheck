@@ -107,7 +107,7 @@ describe("Stufe 2 – Auffälligkeiten, Lösungsvorschläge, Zusammenfassung", (
   });
 
   it("Zusammenfassung in ganzen Sätzen", () => {
-    expect(s2.zusammenfassung[0]).toBe(`Wir haben Ihre Abrechnung 2025 anhand von ${ALLE_REGELN.length} Prüfregeln untersucht und dabei 3 Fehler und 5 Auffälligkeiten festgestellt.`);
+    expect(s2.zusammenfassung[0]).toBe("Wir haben Ihre Abrechnung 2025 geprüft und dabei 3 Fehler und 5 Auffälligkeiten festgestellt.");
     expect(s2.zusammenfassung).toContain(`Sicher bezifferbar ist ein Einsparpotenzial von ${euro(198)}.`);
     expect(s2.zusammenfassung).toContain(`Der wichtigste Punkt ist „Nicht umlagefähig: Verwaltungskosten“. Fordern Sie die Streichung dieser Position (${euro(144)}).`);
   });

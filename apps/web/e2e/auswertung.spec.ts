@@ -70,6 +70,9 @@ test("Ergebnis → Lösung ansehen → Empfehlung → Schreiben oder Experte", a
   await expect(page.getByText(/weitere Punkte prüfen wir mit Ihrem Mietvertrag/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Dachrinnenreinigung" })).toBeHidden();
 
+  // Regelwerk und Version werden dem Kunden nicht gezeigt
+  await expect(page.getByText(/Geprüft am \d{1,2}\.\d{1,2}\.\d{4}\. Keine Rechtsberatung\./)).toBeVisible();
+  expect(await page.locator("body").innerText()).not.toMatch(/Regelwerk|Prüfregeln/);
   // Keine Emojis, keine Markdown-Reste, wenig Text
   const text = await page.locator("main").innerText();
   expect(text).not.toMatch(/\p{Extended_Pictographic}/u);

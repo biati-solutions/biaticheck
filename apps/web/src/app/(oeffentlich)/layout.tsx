@@ -5,20 +5,23 @@ import { ThemaKnopf } from "@/komponenten/ThemaKnopf";
 export default function OeffentlichLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 border-b border-linie bg-grund/85 backdrop-blur-md">
+      <header className="sticky top-0 z-20 border-b border-linie bg-grund">
         <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 py-3">
           <Link href="/" aria-label="BiatiCheck Startseite">
             <Logo />
           </Link>
-          <nav aria-label="Hauptnavigation" className="ml-auto hidden gap-7 text-[15px] font-medium md:flex">
+          <nav aria-label="Hauptnavigation" className="ml-auto hidden items-center gap-7 text-[15px] font-medium md:flex">
             <Link href="/#ablauf" className="hover:text-gruen">
-              So funktioniert&apos;s
+              So läuft es ab
             </Link>
-            <Link href="/#pruefen" className="hover:text-gruen">
-              Jetzt prüfen
+            <Link href="/#inhalt" className="hover:text-gruen">
+              Was wir prüfen
             </Link>
-            <Link href="/#regeln" className="hover:text-gruen">
-              Prüfregeln
+            <Link href="/#fragen" className="hover:text-gruen">
+              Fragen
+            </Link>
+            <Link href="/#pruefen" className="rounded-lg bg-gruen px-4 py-2 font-semibold text-white hover:bg-gruen-tief">
+              Abrechnung prüfen
             </Link>
           </nav>
           <div className="ml-auto md:ml-0">

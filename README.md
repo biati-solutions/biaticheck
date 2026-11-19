@@ -90,7 +90,7 @@ DATABASE_URL=... UPLOAD_DIR=... DATEI_SCHLUESSEL=... pnpm --filter @biaticheck/w
 | Automatische Qualitätskontrolle (CI) | ✅ |
 | Interner Prüfbereich (Korrigieren, Freigeben, Messung für Auto-Freigabe) | ✅ |
 | Löschfrist (90 Tage) | ✅ Skript, Cron im Deployment einrichten |
-| Design von biati.de (Inter, Markenfarben, 3D-Startseite, Erklärvideo, Hell/Dunkel) | ✅ |
+| Design von biati.de (Inter, Markenfarben, Hell/Dunkel); Startseite sachlich: Hochladen ganz oben, Prüfinhalte in Alltagssprache, häufige Fragen – ohne Regelzahlen, Regelkennungen und Technikbegriffe | ✅ |
 | Ergebnisstufen, Anschreiben, Beratungsanfrage | ✅ (Freischaltung vorerst im Testmodus) |
 | Prüfbedarf: Unterlagen nachreichen (Vorjahresabrechnung, Kontoauszüge) mit automatischem Auslesen | ✅ – ohne API-Schlüssel an Fachprüfer |
 | Bezahlung (Stripe) | ⏳ wartet auf Stripe-Konto |

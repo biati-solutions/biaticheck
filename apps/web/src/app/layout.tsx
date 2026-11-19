@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "BiatiCheck – Nebenkostenabrechnung prüfen",
-  description: "Laden Sie Ihre Nebenkostenabrechnung hoch und erhalten Sie eine kostenlose Erstauswertung – geprüft nach den Regeln der Experten von Biati Solutions.",
+  description: "Laden Sie Ihre Nebenkostenabrechnung hoch und erhalten Sie eine kostenlose Erstauswertung – ein Angebot von Biati Solutions.",
   icons: { icon: "/biati-logo.svg" },
 };
 

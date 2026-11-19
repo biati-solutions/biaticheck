@@ -111,7 +111,7 @@ export function FallSeite({ id }: { id: string }) {
           />
           <LinkMerken />
           <p className="mt-4 text-xs text-gedaempft">
-            Geprüft am {new Date(ansicht.stufe1.geprueftAm).toLocaleDateString("de-DE")} mit Regelwerk {ansicht.stufe1.regelwerkVersion}. Keine Rechtsberatung.
+            Geprüft am {new Date(ansicht.stufe1.geprueftAm).toLocaleDateString("de-DE")}. Keine Rechtsberatung.
           </p>
         </>
       ) : null;

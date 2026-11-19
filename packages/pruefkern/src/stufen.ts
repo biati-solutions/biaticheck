@@ -384,7 +384,7 @@ export function erstelleZusammenfassung(s1: Stufe1, punkte: Auffaelligkeit[]): s
   ].filter(Boolean);
   saetze.push(
     teile.length
-      ? `Wir haben Ihre Abrechnung${jahr} anhand von ${ALLE_REGELN.length} Prüfregeln untersucht und dabei ${teile.join(", ").replace(/, ([^,]*)$/, " und $1")} festgestellt.`
+      ? `Wir haben Ihre Abrechnung${jahr} geprüft und dabei ${teile.join(", ").replace(/, ([^,]*)$/, " und $1")} festgestellt.`
       : `Wir haben Ihre Abrechnung${jahr} geprüft und keine Fehler oder Auffälligkeiten festgestellt.`,
   );
 

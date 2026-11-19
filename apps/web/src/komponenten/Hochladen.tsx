@@ -60,13 +60,14 @@ export function Hochladen() {
   const zustand = fehler && !datei && fehler.includes("PDF oder ein Foto") ? "ungueltig" : datei ? "gewaehlt" : "leer";
 
   return (
-    <form onSubmit={absenden} noValidate className="grid gap-4 rounded-3xl border border-linie bg-grund p-5 shadow-glas sm:p-7">
+    <form onSubmit={absenden} noValidate className="grid gap-4 rounded-2xl border border-linie bg-grund p-5 shadow-[0_1px_2px_rgba(14,59,46,0.06),0_8px_24px_-12px_rgba(14,59,46,0.18)] sm:p-6">
+      <h2 className="text-lg font-bold">Abrechnung hochladen</h2>
       <div
         onDragEnter={() => setZiehen(true)}
         onDragOver={() => setZiehen(true)}
         onDragLeave={() => setZiehen(false)}
         onDrop={() => setZiehen(false)}
-        className={`relative grid place-items-center gap-1.5 rounded-2xl border-2 px-4 py-8 text-center transition-colors focus-within:outline-3 focus-within:outline-offset-3 focus-within:outline-gruen ${
+        className={`relative grid place-items-center gap-1.5 rounded-xl border-2 px-4 py-8 text-center transition-colors focus-within:outline-3 focus-within:outline-offset-3 focus-within:outline-gruen ${
           zustand === "ungueltig"
             ? "border-fehler-text bg-fehler"
             : zustand === "gewaehlt"
@@ -127,10 +128,11 @@ export function Hochladen() {
       <button
         type="submit"
         disabled={laedt}
-        className="w-full rounded-lg bg-gruen px-6 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-16px_rgba(31,163,126,0.8)] hover:bg-gruen-tief disabled:cursor-wait disabled:opacity-60"
+        className="w-full rounded-lg bg-gruen px-6 py-3.5 text-base font-semibold text-white hover:bg-gruen-tief disabled:cursor-wait disabled:opacity-60"
       >
         {laedt ? "Wird hochgeladen …" : "Kostenlos prüfen"}
       </button>
+      <p className="text-center text-[13px] text-gedaempft">Sie erhalten einen persönlichen Link zu Ihrem Ergebnis.</p>
     </form>
   );
 }

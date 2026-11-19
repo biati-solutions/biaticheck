@@ -43,16 +43,21 @@ test("Dateiauswahl liegt über der ganzen Ablagefläche (Antippen öffnet den Di
   expect(waehler.isMultiple()).toBe(false);
 });
 
-test("Startseite: 3D-Szene, Erklärvideo und Prüfregeln", async ({ page }) => {
+test("Startseite: Hochladen steht ganz oben, keine Regelzahlen und keine Technikbegriffe", async ({ page }) => {
   const fehler: string[] = [];
   page.on("pageerror", (e) => fehler.push(e.message));
   await page.goto("/");
-  // Szene ist geladen – oder zeigt bei fehlendem WebGL den Ersatz-Hintergrund
-  await expect(page.locator('[role="img"][data-bereit="true"], [role="img"][data-ohne-webgl="true"]')).toHaveCount(1, { timeout: 10_000 });
-  await expect(page.locator('video[src="/video/erklaervideo.mp4"]')).toHaveCount(1);
-  // Anzahl aus dem Regelwerk – nie von Hand eintragen
-  await expect(page.locator("#regeln li")).toHaveCount(ALLE_REGELN.length);
-  await expect(page.getByText("Regeln geprüft").locator("..")).toContainText(String(ALLE_REGELN.length));
+  await expect(page.getByRole("heading", { level: 1, name: /Stimmt Ihre Nebenkosten.?abrechnung\?/ })).toBeVisible();
+  // Die Hauptaktion ist ohne Scrollen erreichbar (Desktop) bzw. direkt unter der Einleitung (Handy)
+  await expect(page.getByRole("button", { name: "Kostenlos prüfen" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Das schauen wir uns an" })).toBeVisible();
+  await page.getByText("Was kostet die Prüfung?").click();
+  await expect(page.getByText(/Die Prüfung und das Ergebnis sind kostenlos/)).toBeVisible();
+  // Weder Anzahl noch Kennungen des Regelwerks, keine KI-Begriffe
+  const text = await page.locator("body").innerText();
+  expect(text).not.toMatch(/\bKI\b|künstliche Intelligenz|Regelwerk|Prüfregeln|Regeln geprüft/i);
+  expect(text).not.toMatch(/\b[FRIP]-\d{2}\b/);
+  expect(text).not.toContain(`${ALLE_REGELN.length} `);
   expect(fehler).toEqual([]);
 });
 
