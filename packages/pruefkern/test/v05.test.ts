@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALLE_REGELN, BELEG_PRUEFLISTE, erstelleStufe1, erstelleStufe2, euro, pruefeAbrechnung, REGELWERK_VERSION, wendeAntwortAn, type AbrechnungEingabe, type Regelergebnis } from "../src/index";
+import { ALLE_REGELN, BELEG_PRUEFLISTE, erstelleStufe1, erstelleStufe2, euro, pruefeAbrechnung, RECHTSSTAND, REGELWERK_VERSION, wendeAntwortAn, type AbrechnungEingabe, type Regelergebnis } from "../src/index";
 import { korrekteAbrechnung } from "./faelle";
 import { G001 } from "./golden/G-001";
 
@@ -23,10 +23,19 @@ const mitPosition = (bezeichnung: string, kategorie: AbrechnungEingabe["kostenpo
 };
 
 describe("Regelwerk 0.5", () => {
-  it("Version und Umfang: 38 Regeln mit eindeutigen IDs", () => {
-    expect(REGELWERK_VERSION).toBe("0.5.0");
-    expect(ALLE_REGELN.length).toBe(38);
-    expect(new Set(ALLE_REGELN.map((r) => r.id)).size).toBe(38);
+  it("Version und Umfang: 39 Regeln mit eindeutigen IDs, jede mit Grundlage und Version", () => {
+    expect(REGELWERK_VERSION).toBe("0.6.0");
+    expect(ALLE_REGELN.length).toBe(39);
+    expect(new Set(ALLE_REGELN.map((r) => r.id)).size).toBe(39);
+    for (const r of ALLE_REGELN) {
+      expect(r.grundlage.length, r.id).toBeGreaterThan(5);
+      expect(r.version, r.id).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+  });
+
+  it("der Prüfbericht nennt den Stand der berücksichtigten Rechtsprechung", () => {
+    expect(pruefeAbrechnung(korrekteAbrechnung(), { heute: HEUTE }).rechtsstand).toBe(RECHTSSTAND);
+    expect(RECHTSSTAND).toMatch(/^\d{4}-\d{2}$/);
   });
 
   it("die korrekte Abrechnung bleibt ohne Befund", () => {
@@ -287,5 +296,75 @@ describe("Zusätzliche Schreiben und Positionsübersicht", () => {
     expect(s2.positionen).toHaveLength(10);
     expect(s2.positionen.find((p) => p.id === "neu")).toMatchObject({ bewertung: "fehler", hinweis: "Versicherung nicht erlaubt: Rechtsschutzversicherung" });
     expect(s2.positionen.filter((p) => p.id !== "neu").every((p) => p.bewertung === "in_ordnung")).toBe(true);
+  });
+});
+
+/** Regelwerk 0.6: Lücken aus dem Abgleich mit den sieben Prüfbereichen (Zeitraum, Rechnung, Schlüssel, Umlagefähigkeit, Form, Mietvertrag, Rechtsprechung). */
+
+describe("F-01 Erstellung der Abrechnung", () => {
+  it("Abrechnung vor Ende des Zeitraums datiert: Auffälligkeit", () => {
+    const a = korrekteAbrechnung();
+    a.meta.erstelltAm = "2025-11-30";
+    a.meta.zugangAm = "2025-12-05";
+    expect(nur(pruefe(a), "F-01")).toMatchObject([{ status: "auffaelligkeit", titel: "Abrechnung vor Ende des Zeitraums erstellt" }]);
+    expect(nur(pruefe(korrekteAbrechnung()), "F-01")).toMatchObject([{ status: "ok" }]);
+  });
+});
+
+describe("R-01 rechnet jede Position nach, auch nach Verbrauch verteilte", () => {
+  const mitWasserNachVerbrauch = (anteilMieter: number) => {
+    const a = korrekteAbrechnung();
+    const wasser = a.kostenpositionen.find((p) => p.id === "p2")!;
+    wasser.umlageschluessel = { typ: "verbrauch", anteilEinheit: 80, anteilGesamt: 1040 }; // 5.200 × 80/1.040 = 400
+    wasser.anteilMieter = anteilMieter;
+    a.ausgewiesen = { summeKostenMieter: 3132 - 400 + anteilMieter, saldo: 132 - 400 + anteilMieter };
+    return a;
+  };
+
+  it("Rechenfehler bei einer Verbrauchsposition wird gefunden", () => {
+    expect(nur(pruefe(mitWasserNachVerbrauch(430)), "R-01")).toMatchObject([{ status: "abweichung", positionId: "p2", betragZugunstenMieter: 30 }]);
+    expect(nur(pruefe(mitWasserNachVerbrauch(400)), "R-01")).toMatchObject([{ status: "ok", beleg: { geprueft: 9, nichtGeprueft: [] } }]);
+  });
+
+  it("bei Ein- oder Auszug kein zusätzlicher Zeitanteil auf den Verbrauch", () => {
+    const a = mitWasserNachVerbrauch(400);
+    a.meta.nutzungszeitraum = { von: "2025-07-01", bis: "2025-12-31" };
+    a.meta.zwischenablesung = true;
+    expect(nur(pruefe(a), "R-01").filter((e) => e.positionId === "p2")).toEqual([]);
+  });
+});
+
+describe("F-04 Verteilerschlüssel vollständig angegeben", () => {
+  it("fehlende Werte oder ein nicht erklärter Schlüssel fallen auf", () => {
+    const ohneWerte = korrekteAbrechnung();
+    ohneWerte.kostenpositionen.find((p) => p.id === "p5")!.umlageschluessel = { typ: "wohnflaeche" };
+    expect(nichtOk(pruefe(ohneWerte), "F-04")).toMatchObject([{ status: "auffaelligkeit", positionId: "p5", beleg: { fehlend: ["Werte des Umlageschlüssels (Gesamtmenge und Ihr Anteil)"] } }]);
+    const sonstig = korrekteAbrechnung();
+    sonstig.kostenpositionen.find((p) => p.id === "p5")!.umlageschluessel = { typ: "sonstig" };
+    expect(nichtOk(pruefe(sonstig), "F-04")).toMatchObject([{ beleg: { fehlend: ["verständlicher Umlageschlüssel"] } }]);
+  });
+});
+
+describe("I-19 Kostenarten im Mietvertrag vereinbart", () => {
+  it("Verweis auf die Betriebskostenverordnung: alles vereinbart", () => {
+    const a = korrekteAbrechnung();
+    a.mietvertrag = { umgelegteKostenarten: "alle" };
+    expect(nur(pruefe(a), "I-19")).toMatchObject([{ status: "ok" }]);
+  });
+
+  it("aufgezählte Kostenarten: nicht genannte Positionen sind ein Fehler mit Betrag", () => {
+    const a = korrekteAbrechnung();
+    a.mietvertrag = { umgelegteKostenarten: ["grundsteuer", "wasser", "entwaesserung", "strassenreinigung_muell", "gebaeudereinigung_ungeziefer", "beleuchtung", "versicherung"] };
+    const { bericht, s2 } = stufen(a);
+    expect(nur(bericht.ergebnisse, "I-19").map((e) => [e.status, e.positionId, e.betragZugunstenMieter])).toEqual([
+      ["abweichung", "p6", 120],
+      ["abweichung", "p9", 240],
+    ]);
+    expect(bericht.zusammenfassung.einsparpotenzial).toBe(360);
+    expect(s2.anschreiben.text).toContain(`Hauswart (${euro(240)}): Diese Kostenart ist im Mietvertrag nicht auf mich umgelegt.`);
+  });
+
+  it("ohne Angaben zum Mietvertrag keine Aussage", () => {
+    expect(nur(pruefe(korrekteAbrechnung()), "I-19")).toEqual([]);
   });
 });

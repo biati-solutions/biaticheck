@@ -230,6 +230,13 @@ export const Abrechnung = z.object({
     .object({
       /** Im Mietvertrag ausdrücklich vereinbarte "sonstige Betriebskosten" (§ 2 Nr. 17). */
       vereinbarteSonstigeKosten: z.array(z.string()).optional(),
+      /**
+       * Welche Betriebskostenarten der Mietvertrag auf den Mieter umlegt:
+       * "alle" = Verweis auf die Betriebskostenverordnung bzw. alle Kostenarten des § 2 Nr. 1–16 BetrKV,
+       * sonst die Liste der ausdrücklich genannten Kostenarten (leer = keine Umlage vereinbart, z. B. Inklusivmiete).
+       * „Sonstige Betriebskosten“ (Nr. 17) werden getrennt über vereinbarteSonstigeKosten geprüft.
+       */
+      umgelegteKostenarten: z.union([z.literal("alle"), z.array(Kostenkategorie)]).optional(),
       /** Pauschale statt Vorauszahlung vereinbart → keine Abrechnung geschuldet. */
       pauschaleVereinbart: z.boolean().optional(),
       /** Mietvertrag schließt Erdgeschosswohnungen von Aufzugskosten aus. */

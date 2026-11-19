@@ -21,7 +21,7 @@ const ZEITANTEILIGE_SCHLUESSEL = new Set(["wohnflaeche", "einheiten", "miteigent
 
 export const R01_Positionsanteil: Regel = {
   id: "R-01",
-  version: "1.0.0",
+  version: "1.1.0",
   titel: "Anteil je Kostenposition nachgerechnet",
   bereich: "rechnerisch",
   grundlage: "§ 556a BGB (Umlagemaßstab)",
@@ -30,20 +30,21 @@ export const R01_Positionsanteil: Regel = {
     const faktorZeit = zeitanteil(a);
     const befunde: Befund[] = [];
     let geprueft = 0;
+    const nichtGeprueft: string[] = [];
 
     for (const p of a.kostenpositionen) {
       const s = p.umlageschluessel;
-      if (
-        p.gesamtkosten === undefined ||
-        !s ||
-        !ZEITANTEILIGE_SCHLUESSEL.has(s.typ) ||
-        s.anteilEinheit === undefined ||
-        s.anteilGesamt === undefined
-      ) {
+      // Nachrechenbar sind alle Schlüssel mit Gesamtmenge und eigenem Anteil – auch der Verbrauch.
+      // Nicht nachrechenbar: direkt zugeordnete Kosten und nicht erklärte Schlüssel (meldet F-04).
+      const nachrechenbar = s && (ZEITANTEILIGE_SCHLUESSEL.has(s.typ) || s.typ === "verbrauch");
+      if (p.gesamtkosten === undefined || !s || !nachrechenbar || s.anteilEinheit === undefined || s.anteilGesamt === undefined) {
+        if (s?.typ !== "direkt") nichtGeprueft.push(p.id);
         continue;
       }
       geprueft++;
-      const erwartet = runde((p.gesamtkosten * s.anteilEinheit) / s.anteilGesamt * faktorZeit);
+      // Der Verbrauch ist schon nur für die eigene Nutzungszeit erfasst – kein zusätzlicher Zeitanteil.
+      const zeit = s.typ === "verbrauch" ? 1 : faktorZeit;
+      const erwartet = runde((p.gesamtkosten * s.anteilEinheit) / s.anteilGesamt * zeit);
       const differenz = runde(p.anteilMieter - erwartet);
       if (Math.abs(differenz) <= einstellungen.toleranzEuro) continue;
 
@@ -60,7 +61,7 @@ export const R01_Positionsanteil: Regel = {
         beleg: {
           gesamtkosten: p.gesamtkosten,
           schluessel: s,
-          zeitanteil: runde(faktorZeit * 10000) / 10000,
+          zeitanteil: runde(zeit * 10000) / 10000,
           erwartet,
           berechnet: p.anteilMieter,
           differenz,
@@ -82,8 +83,10 @@ export const R01_Positionsanteil: Regel = {
       {
         status: "ok",
         titel: "Anteile korrekt berechnet",
-        erklaerung: `${geprueft} Kostenposition(en) nachgerechnet – keine Rechenfehler gefunden.`,
-        beleg: { geprueft },
+        erklaerung:
+          `${geprueft} Kostenposition(en) nachgerechnet – keine Rechenfehler gefunden.` +
+          (nichtGeprueft.length ? ` ${nichtGeprueft.length} weitere ließen sich mangels Angaben nicht nachrechnen.` : ""),
+        beleg: { geprueft, nichtGeprueft },
       },
     ];
   },

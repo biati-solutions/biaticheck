@@ -767,6 +767,42 @@ export const I18_HauswartDoppelt: Regel = {
   },
 };
 
+/**
+ * Kostenart im Mietvertrag vereinbart: Betriebskosten trägt der Mieter nur, soweit der Mietvertrag sie auf ihn umlegt.
+ * Verweist der Vertrag auf die Betriebskostenverordnung, sind alle Kostenarten des § 2 Nr. 1–16 vereinbart
+ * (BGH, Urt. v. 10.02.2016 – VIII ZR 137/15). Zählt er einzelne Kostenarten auf, gelten nur diese.
+ * Nicht umlagefähige Kosten meldet I-01, sonstige Betriebskosten I-02, Heizkosten folgen der HeizkostenV.
+ */
+export const I19_KostenartVereinbart: Regel = {
+  id: "I-19",
+  version: "1.0.0",
+  titel: "Kostenarten im Mietvertrag vereinbart",
+  bereich: "inhaltlich",
+  grundlage: "§ 556 Abs. 1 BGB; BGH, Urt. v. 10.02.2016 – VIII ZR 137/15",
+  stand: "entwurf",
+  pruefe(a) {
+    const vereinbart = a.mietvertrag?.umgelegteKostenarten;
+    if (vereinbart === undefined) return [];
+    const zuPruefen = a.kostenpositionen.filter(
+      (p) => !NICHT_UMLAGEFAEHIG.includes(p.kategorie) && !["sonstige", "unbekannt", "heizung", "warmwasser", "verbundene_anlagen"].includes(p.kategorie),
+    );
+    if (zuPruefen.length === 0) return [];
+    const fehlt = vereinbart === "alle" ? [] : zuPruefen.filter((p) => !vereinbart.includes(p.kategorie));
+    if (fehlt.length === 0) {
+      return [{ status: "ok", titel: "Kostenarten vereinbart", erklaerung: "Alle abgerechneten Kostenarten sind im Mietvertrag auf Sie umgelegt." }];
+    }
+    return fehlt.map((p) => ({
+      status: "abweichung" as const,
+      titel: `Nicht im Mietvertrag: ${p.bezeichnung}`,
+      erklaerung: `„${p.bezeichnung}“ (${euro(p.anteilMieter)}) gehört zur Kostenart „${KOSTENKATEGORIEN[p.kategorie].replace(/^§ 2 Nr\. \d+ – /, "")}“. Ihr Mietvertrag legt diese Kostenart nicht auf Sie um. Abgerechnet werden darf nur, was vereinbart ist.`,
+      naechsterSchritt: `Fordern Sie die Streichung dieser Position (${euro(p.anteilMieter)}).`,
+      betragZugunstenMieter: p.anteilMieter,
+      positionId: p.id,
+      beleg: { kategorie: p.kategorie, vereinbart },
+    }));
+  },
+};
+
 export const INHALTLICHE_REGELN = [
   I01_NichtUmlagefaehig,
   I02_SonstigeKosten,
@@ -786,4 +822,5 @@ export const INHALTLICHE_REGELN = [
   I16_Versicherungen,
   I17_EinmaligeKosten,
   I18_HauswartDoppelt,
+  I19_KostenartVereinbart,
 ];

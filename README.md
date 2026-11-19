@@ -83,7 +83,7 @@ DATABASE_URL=... UPLOAD_DIR=... DATEI_SCHLUESSEL=... pnpm --filter @biaticheck/w
 
 | Baustein | Status |
 |---|---|
-| Prüfkern (Schema, 38 Regeln, Rückfragen, Ergebnisstufen mit Prüfbedarf, Kostenvergleich) | ✅ v0.5 (Regeln im Entwurf) |
+| Prüfkern (Schema, 39 Regeln, Rückfragen, Ergebnisstufen mit Prüfbedarf, Kostenvergleich) | ✅ v0.6 (Regeln im Entwurf) |
 | Golden Set | 1 echter Fall (G-001) |
 | Auslesen (PDF → Schema, Selbstkontrolle) | ✅ – Live-Test mit API-Schlüssel ausstehend |
 | Web-App: Upload, Erstauswertung, Rückfragen (mobil) | ✅ |

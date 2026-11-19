@@ -467,6 +467,7 @@ export function kurzfassung(e: Regelergebnis, a: Abrechnung): { titel: string; s
 
   switch (e.regelId) {
     case "F-01":
+      if (s === "auffaelligkeit") return k("Abrechnung zu früh erstellt", "Sie wurde erstellt, bevor der Abrechnungszeitraum zu Ende war.");
       return s === "abweichung" ? k("Zeitraum zu lang", "Eine Abrechnung darf höchstens 12 Monate umfassen.") : k("Zeitraum fehlt", "Der Abrechnungszeitraum ist nicht erkennbar.");
     case "F-02":
       if (s === "abweichung") return k("Abrechnung kam zu spät", "Eine Nachzahlung müssen Sie deshalb nicht leisten.");
@@ -477,7 +478,7 @@ export function kurzfassung(e: Regelergebnis, a: Abrechnung): { titel: string; s
     case "F-03":
       return s === "nicht_pruefbar" ? k("Eingangsdatum fehlt", "Damit berechnen wir Ihre Frist für Einwände.") : k("Frist abgelaufen", "Einwände sind nur noch in Ausnahmefällen möglich.");
     case "F-04":
-      return k(`Angaben fehlen: ${name}`, "Gesamtkosten oder Verteilung sind nicht angegeben.");
+      return k(`Angaben fehlen: ${name}`, "Gesamtkosten oder Verteilung sind nicht vollständig angegeben.");
     case "F-05":
       return k("Pauschale vereinbart", "Bei einer Pauschale darf nicht nachberechnet werden.");
     case "R-01":
@@ -549,6 +550,8 @@ export function kurzfassung(e: Regelergebnis, a: Abrechnung): { titel: string; s
       return s === "nicht_pruefbar" ? k("Zähler beim Umzug abgelesen?", "Verbrauchskosten dürfen nur für Ihre Mietzeit berechnet werden.") : k("Keine Ablesung beim Umzug", "Ihr Verbrauch ist dann nur geschätzt.");
     case "I-15":
       return s === "abweichung" ? k("CO₂-Kosten nicht ausgewiesen", "Sie dürfen Ihre Heizkosten um 3 % kürzen.") : k("CO₂-Kosten nicht ausgewiesen", "Die Angaben sind Pflicht. Fehlen sie, ist eine Kürzung um 3 % möglich.");
+    case "I-19":
+      return k(`Nicht im Mietvertrag: ${name}`, "Ihr Mietvertrag legt diese Kostenart nicht auf Sie um.");
     case "I-16":
       return k(`Versicherung nicht erlaubt: ${name}`, "Diese Versicherung schützt den Vermieter und darf nicht umgelegt werden.");
     case "I-17":
@@ -681,6 +684,16 @@ export function briefpunkt(e: Regelergebnis, a: Abrechnung): string {
         : "Die Heizkostenabrechnung weist die CO₂-Kosten und die Einstufung des Gebäudes nicht aus. Bitte reichen Sie diese Angaben nach.";
     case "I-16":
       if (name) return `${name}${betrag}: Diese Versicherung ist nicht als Betriebskosten umlagefähig.`;
+      break;
+    case "I-19":
+      if (name) return `${name}${betrag}: Diese Kostenart ist im Mietvertrag nicht auf mich umgelegt.`;
+      break;
+    case "F-01":
+      if (e.status === "auffaelligkeit" && typeof b.erstelltAm === "string" && typeof b.bis === "string")
+        return `Die Abrechnung ist auf den ${datumDE(b.erstelltAm)} datiert, der Abrechnungszeitraum endet aber erst am ${datumDE(b.bis)}. Bitte klären Sie Zeitraum und Datum und teilen Sie mit, ob Kosten geschätzt wurden.`;
+      break;
+    case "F-04":
+      if (name && Array.isArray(b.fehlend)) return `${name}: In der Abrechnung fehlen ${(b.fehlend as string[]).join(" und ")}. Bitte reichen Sie die Angaben nach.`;
       break;
     case "I-17":
       if (name)
@@ -1048,6 +1061,7 @@ export function fakten(e: Regelergebnis, a: Abrechnung): Fakt[] {
     case "F-01":
       add("Abrechnungszeitraum", b.von && b.bis ? `${datum(b.von)} bis ${datum(b.bis)}` : undefined);
       add("Erlaubt", "höchstens 12 Monate");
+      if (b.erstelltAm) add("Datum der Abrechnung", datum(b.erstelltAm), true);
       break;
     case "F-02": {
       const z = (b.zeitraum ?? a.meta.abrechnungszeitraum) as { von: string; bis: string } | undefined;
@@ -1172,6 +1186,7 @@ export function fakten(e: Regelergebnis, a: Abrechnung): Fakt[] {
       break;
     case "I-16":
     case "I-17":
+    case "I-19":
       position();
       if (e.betragZugunstenMieter) add("Zu Ihren Gunsten", e.status === "abweichung" ? euro(e.betragZugunstenMieter) : `bis zu ${euro(e.betragZugunstenMieter)}`, true);
       break;

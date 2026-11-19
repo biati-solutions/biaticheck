@@ -8,8 +8,8 @@ const RUECKFRAGE_ZUGANG: Rueckfrage = {
 
 export const F01_Abrechnungszeitraum: Regel = {
   id: "F-01",
-  version: "1.0.0",
-  titel: "Abrechnungszeitraum höchstens 12 Monate",
+  version: "1.1.0",
+  titel: "Abrechnungszeitraum und Erstellung",
   bereich: "formell",
   grundlage: "§ 556 Abs. 3 Satz 1 BGB",
   stand: "entwurf",
@@ -34,6 +34,19 @@ export const F01_Abrechnungszeitraum: Regel = {
           erklaerung: `Der Zeitraum ${datumDE(z.von)}–${datumDE(z.bis)} ist länger als ein Jahr. Betriebskosten sind jährlich abzurechnen.`,
           naechsterSchritt: "Widersprechen Sie der Abrechnung schriftlich und verlangen Sie eine Abrechnung über höchstens 12 Monate.",
           beleg: { von: z.von, bis: z.bis },
+        },
+      ];
+    }
+    // Erstellung: Über einen Zeitraum kann erst abgerechnet werden, wenn er abgelaufen ist.
+    const erstellt = a.meta.erstelltAm;
+    if (erstellt && vergleiche(erstellt, z.bis) < 0) {
+      return [
+        {
+          status: "auffaelligkeit",
+          titel: "Abrechnung vor Ende des Zeitraums erstellt",
+          erklaerung: `Die Abrechnung trägt das Datum ${datumDE(erstellt)}, der Abrechnungszeitraum endet aber erst am ${datumDE(z.bis)}. Die Kosten des ganzen Zeitraums können zu diesem Zeitpunkt noch nicht feststehen.`,
+          naechsterSchritt: "Fragen Sie nach, ob Zeitraum oder Datum falsch angegeben sind und ob Kosten geschätzt wurden.",
+          beleg: { von: z.von, bis: z.bis, erstelltAm: erstellt },
         },
       ];
     }
@@ -172,7 +185,7 @@ export const F03_Einwendungsfrist: Regel = {
 
 export const F04_Mindestangaben: Regel = {
   id: "F-04",
-  version: "1.0.0",
+  version: "1.1.0",
   titel: "Mindestangaben je Kostenposition",
   bereich: "formell",
   grundlage: "§ 259 BGB; BGH, Urt. v. 20.01.2016 – VIII ZR 93/15",
@@ -184,6 +197,9 @@ export const F04_Mindestangaben: Regel = {
         const fehlend: string[] = [];
         if (p.gesamtkosten === undefined) fehlend.push("Gesamtkosten");
         if (!p.umlageschluessel) fehlend.push("Umlageschlüssel");
+        // Zum Schlüssel gehören auch seine Werte: ohne Gesamtmenge und eigenen Anteil lässt sich nichts nachrechnen.
+        else if (p.umlageschluessel.typ === "sonstig") fehlend.push("verständlicher Umlageschlüssel");
+        else if (p.umlageschluessel.anteilEinheit === undefined || p.umlageschluessel.anteilGesamt === undefined) fehlend.push("Werte des Umlageschlüssels (Gesamtmenge und Ihr Anteil)");
         if (fehlend.length === 0) return [];
         return [
           {
@@ -201,7 +217,7 @@ export const F04_Mindestangaben: Regel = {
       {
         status: "ok",
         titel: "Mindestangaben vollständig",
-        erklaerung: "Für alle Kostenpositionen sind Gesamtkosten und Umlageschlüssel angegeben.",
+        erklaerung: "Für alle Kostenpositionen sind Gesamtkosten, Umlageschlüssel und dessen Werte angegeben.",
       },
     ];
   },
