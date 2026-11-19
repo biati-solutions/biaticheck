@@ -5,7 +5,7 @@ Automatisierte Prüfung von Nebenkostenabrechnungen auf Basis von Expertenwissen
 - [Architektur](docs/ARCHITEKTUR.md)
 - [Regelkatalog](docs/REGELKATALOG.md)
 - [Vorlage Prüfprotokoll und Regelkarte](docs/REGELKARTE-VORLAGE.md)
-- [Online stellen: Vorschau auf GitHub Pages und eigener Server](docs/DEPLOYMENT.md)
+- [Online stellen: eigener Server mit Docker](docs/DEPLOYMENT.md)
 - Musterprüfungen: [G-001](docs/musterpruefung/G-001.md)
 
 ## Aufbau
@@ -95,6 +95,6 @@ DATABASE_URL=... UPLOAD_DIR=... DATEI_SCHLUESSEL=... pnpm --filter @biaticheck/w
 | Ergebnisstufen, Anschreiben, Beratungsanfrage | ✅ (Freischaltung vorerst im Testmodus) |
 | Prüfbedarf: Unterlagen nachreichen (Vorjahresabrechnung, Kontoauszüge) mit automatischem Auslesen | ✅ – ohne API-Schlüssel an Fachprüfer |
 | Bezahlung (Stripe) | ⏳ wartet auf Stripe-Konto |
-| Deployment | ✅ Docker-Dateien und Anleitung für den eigenen Server, statische Vorschau für GitHub Pages – Server und Domain noch einzurichten |
+| Deployment | ✅ Docker-Dateien und Anleitung für den eigenen Server – Server und Domain noch einzurichten |
 
 Vor dem Livegang: Impressum und Datenschutzerklärung (`apps/web/src/app/impressum`, `.../datenschutz`) ausfüllen und rechtlich prüfen lassen.

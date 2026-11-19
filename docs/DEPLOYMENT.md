@@ -4,39 +4,19 @@ Es gibt zwei Wege, und sie leisten Verschiedenes:
 
 | | GitHub Pages | Eigener Server |
 |---|---|---|
-| Was läuft dort | Vorschau: Startseite und ein Beispielergebnis mit der Musterabrechnung | die vollständige App |
+| Was läuft dort | die Testseite (`apps/testseite`); ohne Claude-Anmeldung nur „Beispiel ansehen“ | die vollständige App (`apps/web`) |
 | Abrechnungen hochladen | nein | ja |
 | Datenbank, Prüfbereich, Auslesen | nein | ja |
 | Kosten | keine | Server ab etwa 5–10 € im Monat |
-| Wofür | zeigen, wie BiatiCheck aussieht | echter Betrieb, erst als Testumgebung, dann öffentlich |
+| Wofür | zeigen und im Team testen | echter Betrieb, erst als Testumgebung, dann öffentlich |
 
 GitHub Pages liefert nur fertige Dateien aus. Deshalb kann dort keine App laufen, die Dateien entgegennimmt und speichert.
 
-## 1. Vorschau auf GitHub Pages
+## 1. GitHub Pages
 
-Die Vorschau baut sich selbst: `.github/workflows/pages.yml` startet die App im Demo-Modus, ruft Startseite und Beispielergebnis im Browser auf und speichert das fertige HTML ohne Programmcode (`apps/web/skripte/vorschau.ts`).
-
-Einmalig einrichten:
-
-1. Im Repository auf GitHub: **Settings → Pages → Source: „GitHub Actions“**.
-2. Den Stand nach `main` übernehmen. Der Ablauf läuft bei jedem Push auf `main` und lässt sich unter **Actions → Vorschau auf GitHub Pages → Run workflow** von Hand starten.
-3. Die Adresse steht danach unter Settings → Pages, in der Regel `https://heydriver.github.io/biaticheck/`.
-
-Zu beachten:
-
-- Die Seite ist **öffentlich**, auch wenn das Repository privat ist. Sie enthält nur die anonymisierte Musterabrechnung.
-- Bei einem privaten Repository braucht GitHub Pages einen bezahlten GitHub-Tarif.
-- Impressum und Datenschutzerklärung sind in der Vorschau nicht verlinkt, weil sie noch Platzhalter sind.
-
-Lokal bauen:
-
-```bash
-pnpm --filter @biaticheck/web build
-NODE_ENV=test DEMO_AUSLESEN=true FREIGABE_ERFORDERLICH=false ZAHLUNG_MODUS=test \
-  DATABASE_URL=postgresql://biaticheck:biaticheck@localhost:5432/biaticheck \
-  DATEI_SCHLUESSEL=$(openssl rand -base64 32) pnpm --filter @biaticheck/web start -p 3300 &
-VORSCHAU_URL=http://localhost:3300 pnpm --filter @biaticheck/web vorschau   # Ergebnis: apps/web/vorschau/
-```
+Auf GitHub Pages liegt die **Testseite** aus `apps/testseite`, nicht die Next.js-App. Das ist auf `main` bereits eingerichtet
+(`.github/workflows/pages.yml`, Branch `biati-main-test`, gespeicherte Versionen in Ordnern wie `BiatiCheck_v1/`) und in
+`CLAUDE.md` beschrieben. Aus `apps/web` wird bewusst keine zweite Vorschau gebaut.
 
 ## 2. Die echte App auf einem eigenen Server
 
@@ -55,7 +35,7 @@ Drei Dienste in Docker: die App, PostgreSQL und Caddy. Caddy holt und erneuert d
 curl -fsSL https://get.docker.com | sh
 
 # Code holen
-git clone https://github.com/Heydriver/biaticheck.git && cd biaticheck
+git clone https://github.com/biati-solutions/biaticheck.git && cd biaticheck
 
 # Konfiguration anlegen und ausfüllen
 cp deploy/.env.example .env

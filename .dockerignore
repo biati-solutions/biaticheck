@@ -4,7 +4,6 @@
 **/dist
 **/test-results
 **/playwright-report
-**/vorschau
 .git
 .github
 videos
